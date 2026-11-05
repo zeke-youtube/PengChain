@@ -1,0 +1,12 @@
+PRAGMA journal_mode=WAL;
+CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS wallets(id TEXT PRIMARY KEY,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL,banned_until INTEGER,role TEXT NOT NULL DEFAULT 'USER' CHECK(role IN ('USER','OWNER')));
+CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,wallet_id TEXT NOT NULL REFERENCES wallets(id),expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS tokens(id TEXT PRIMARY KEY,name TEXT NOT NULL,symbol TEXT NOT NULL UNIQUE COLLATE NOCASE,creator_wallet_id TEXT REFERENCES wallets(id),max_supply INTEGER,issued_supply INTEGER NOT NULL DEFAULT 0,mineable INTEGER NOT NULL,difficulty INTEGER NOT NULL,created_at INTEGER NOT NULL CHECK(max_supply IS NULL OR max_supply>=0));
+CREATE TABLE IF NOT EXISTS balances(wallet_id TEXT NOT NULL REFERENCES wallets(id),token_id TEXT NOT NULL REFERENCES tokens(id),amount INTEGER NOT NULL CHECK(amount>=0),PRIMARY KEY(wallet_id,token_id));
+CREATE TABLE IF NOT EXISTS transfers(id TEXT PRIMARY KEY,idempotency_key TEXT NOT NULL UNIQUE,sender_wallet_id TEXT NOT NULL,recipient_wallet_id TEXT NOT NULL,token_id TEXT NOT NULL,amount INTEGER NOT NULL CHECK(amount>0),created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS mining_jobs(id TEXT PRIMARY KEY,token_id TEXT NOT NULL,wallet_id TEXT NOT NULL,challenge BLOB NOT NULL,issued_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,difficulty INTEGER NOT NULL,reward INTEGER NOT NULL,accepted_at INTEGER,nonce TEXT,UNIQUE(id));
+CREATE TABLE IF NOT EXISTS mining_solutions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,token_id TEXT NOT NULL,wallet_id TEXT NOT NULL,nonce TEXT NOT NULL,digest TEXT NOT NULL,accepted_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,event_type TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL,previous_hash TEXT NOT NULL,hash TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_tokens_search ON tokens(symbol,name);
+CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(created_at DESC);

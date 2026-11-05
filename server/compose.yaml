@@ -1,0 +1,12 @@
+services:
+  pengchain:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NETWORK_ID: ${NETWORK_ID:-pengchain-v1}
+    volumes:
+      - pengchain-data:/data
+volumes:
+  pengchain-data:

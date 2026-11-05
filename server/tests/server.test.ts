@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import { buildApp } from "../src/app.js";
-import { pca10 } from "../src/pca10.js";
+import { canonicalMiningInput, meetsDifficulty, pca10 } from "../src/pca10.js";
 const resources: any[] = [];
 afterEach(async () => {
   for (const x of resources.splice(0)) {
@@ -121,6 +121,60 @@ describe("PengChain server", () => {
         })
       ).statusCode,
     ).toBe(409);
+  });
+  it("accepts a real decimal mining nonce and rewards a job only once", async () => {
+    const { app, db } = make();
+    const walletId = await create(app);
+    const cookie = await login(app, walletId);
+    const response = await app.inject({
+      method: "GET",
+      url: "/blockchain/api/mining/job?symbol=PENG",
+      headers: { cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    const job = response.json();
+    let nonce = 0n;
+    for (; nonce < 100000n; nonce++) {
+      const digest = pca10(
+        canonicalMiningInput(
+          1,
+          process.env.NETWORK_ID ?? "pengchain-v1",
+          job.jobId,
+          job.tokenId,
+          job.walletId,
+          Buffer.from(job.challenge, "base64url"),
+          nonce,
+        ),
+      );
+      if (meetsDifficulty(digest, job.difficulty)) break;
+    }
+    expect(nonce).toBeLessThan(100000n);
+    const submit = () =>
+      app.inject({
+        method: "POST",
+        url: "/blockchain/api/mining/submit",
+        headers: { cookie },
+        payload: { jobId: job.jobId, nonce: nonce.toString() },
+      });
+    const accepted = await submit();
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ accepted: true, reward: 10 });
+    const replay = await submit();
+    expect(replay.statusCode).toBe(400);
+    expect(replay.json()).toEqual({ error: "stale or already used job" });
+    expect(
+      db
+        .prepare(
+          "SELECT amount FROM balances WHERE wallet_id=? AND token_id='PENG'",
+        )
+        .get(walletId),
+    ).toEqual({ amount: 10 });
+    expect(
+      db.prepare("SELECT issued_supply FROM tokens WHERE id='PENG'").get(),
+    ).toEqual({ issued_supply: 10 });
+    expect(
+      db.prepare("SELECT COUNT(*) count FROM mining_solutions").get(),
+    ).toEqual({ count: 1 });
   });
   it("PCA-10 is deterministic and uses raw digests", () => {
     const input = Buffer.from("pengchain");

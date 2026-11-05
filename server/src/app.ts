@@ -287,7 +287,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
         challenge = randomBytes(32),
         issued = now(),
         expires = issued + 300000;
-      db.prepare("INSERT INTO mining_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(
+      db.prepare("INSERT INTO mining_jobs VALUES(?,?,?,?,?,?,?,?,?,?)").run(
         jobId,
         t.id,
         req.wallet.id,
@@ -317,7 +317,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     { preHandler: auth },
     async (req: any, reply) => {
       const p = z
-        .object({ jobId: z.string(), nonce: z.string().regex(/^\\d+$/) })
+        .object({ jobId: z.string(), nonce: z.string().regex(/^\d+$/) })
         .safeParse(req.body);
       if (!p.success) return reply.code(400).send({ error: "invalid request" });
       try {
@@ -356,7 +356,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
           db.prepare(
             "UPDATE mining_jobs SET accepted_at=?,nonce=? WHERE id=? AND accepted_at IS NULL",
           ).run(accepted, p.data.nonce, j.id);
-          db.prepare("INSERT INTO mining_solutions VALUES(?,?,?,?,?,?)").run(
+          db.prepare("INSERT INTO mining_solutions VALUES(?,?,?,?,?,?,?)").run(
             id(),
             j.id,
             j.token_id,

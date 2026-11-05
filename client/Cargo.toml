@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+base64 = "0.22"
+clap = { version = "4", features = ["derive", "env"] }
 colored = "2"
 dialoguer = "0.11"
 dirs = "5"
@@ -14,6 +15,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [profile.release]
 lto = true

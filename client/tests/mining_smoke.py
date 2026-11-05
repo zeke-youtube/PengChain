@@ -17,7 +17,7 @@ BINARY = Path(__file__).resolve().parents[1] / 'target/release/pengwallet'
 
 class MiningSmoke(unittest.TestCase):
     def test_real_nonce_submission_and_rejection(self):
-        state = {'reject': False, 'submissions': 0}
+        state = {'reject': False, 'submissions': 0, 'requests': 0, 'expire_next': False}
         job = dict(jobId='job', tokenId='PENG', walletId='wallet',
                    challenge=base64.urlsafe_b64encode(bytes(32)).decode().rstrip('='),
                    difficulty=3, expiresAt=int(time.time() * 1000) + 60000)
@@ -37,7 +37,12 @@ class MiningSmoke(unittest.TestCase):
             def do_GET(self):
                 assert self.path == '/blockchain/api/mining/job?symbol=PENG'
                 assert self.headers['Cookie'] == 'peng_session=test'
-                self.respond(200, job)
+                state['requests'] += 1
+                if state['expire_next']:
+                    state['expire_next'] = False
+                    self.respond(200, dict(job, expiresAt=0))
+                else:
+                    self.respond(200, job)
 
             def do_POST(self):
                 assert self.path == '/blockchain/api/mining/submit'
@@ -65,15 +70,27 @@ class MiningSmoke(unittest.TestCase):
                 thread.start()
                 try:
                     env = dict(os.environ, XDG_DATA_HOME=directory, NETWORK_ID='pengchain-v1')
-                    command = [str(BINARY), '--server', f'http://127.0.0.1:{server.server_port}', 'mine', 'PENG']
+                    command = [str(BINARY), '--server', f'http://127.0.0.1:{server.server_port}', 'mine', 'PENG', '--once']
                     result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
                     self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('Reward accepted', result.stdout)
+                    self.assertIn('+10 PENG base units', result.stdout)
+                    self.assertNotIn('\x1b', result.stdout)
+                    result = subprocess.run(command + ['--json'], env=env, capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertTrue(json.loads(result.stdout)['accepted'])
+                    self.assertEqual(result.stderr, '')
+                    requests = state['requests']
+                    state['expire_next'] = True
+                    result = subprocess.run(command + ['--json'], env=env, capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertTrue(json.loads(result.stdout)['accepted'])
+                    self.assertEqual(state['requests'], requests + 2)
                     state['reject'] = True
                     result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
                     self.assertNotEqual(result.returncode, 0)
-                    self.assertIn('submission rejected', result.stderr)
-                    self.assertEqual(state['submissions'], 2)
+                    self.assertIn('stale or already used job', result.stderr)
+                    self.assertEqual(state['submissions'], 4)
                 finally:
                     server.shutdown()
                     thread.join()

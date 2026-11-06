@@ -1,5 +1,5 @@
 use crate::{
-    api::{Api, ApiError, Balance, Session, Token},
+    api::{Api, ApiError, AuditRecord, Balance, CreateTokenRequest, Session, Token},
     storage::{Files, SessionStore, Settings},
 };
 use anyhow::{bail, Context, Result};
@@ -61,6 +61,7 @@ pub struct Snapshot {
     pub tokens: Vec<Token>,
     pub history: Vec<Solution>,
     pub logs: Vec<Log>,
+    pub audit_logs: Vec<AuditRecord>,
     pub error: Option<String>,
     pub cpu_count: usize,
 }
@@ -149,6 +150,20 @@ pub fn public_error(error: &anyhow::Error) -> String {
 }
 
 impl Engine {
+    pub async fn create_token(self: &Arc<Self>, request: CreateTokenRequest) -> Result<Snapshot> {
+        let _guard = self.commands.lock().await;
+        let session = self
+            .state
+            .lock()
+            .unwrap()
+            .session
+            .clone()
+            .context("Sign in before creating a token")?;
+        Api::new(&session.server)?
+            .create_token(&session, &request)
+            .await?;
+        self.refresh().await
+    }
     pub fn new(
         store: Arc<dyn SessionStore>,
         files: Files,
@@ -180,6 +195,7 @@ impl Engine {
                     tokens: vec![],
                     history: vec![],
                     logs: vec![],
+                    audit_logs: vec![],
                     error: None,
                     cpu_count: std::thread::available_parallelism()?.get(),
                 },
@@ -231,10 +247,18 @@ impl Engine {
         match saved {
             Ok(Some(session)) => {
                 if let Ok(balances) = Api::new(&session.server)?.balances(&session).await {
-                    let mut state=self.state.lock().unwrap();
-                    state.snapshot.history=self.history(&session);
-                    state.snapshot.wallet_id=Some(session.wallet_id.clone());state.snapshot.persistent=true;
-                    state.snapshot.balances=balances;state.snapshot.connected=true;state.session=Some(session);
+                    let audit_logs = Api::new(&session.server)?
+                        .logs(&session, None)
+                        .await
+                        .unwrap_or_default();
+                    let mut state = self.state.lock().unwrap();
+                    state.snapshot.history = self.history(&session);
+                    state.snapshot.wallet_id = Some(session.wallet_id.clone());
+                    state.snapshot.persistent = true;
+                    state.snapshot.balances = balances;
+                    state.snapshot.audit_logs = audit_logs;
+                    state.snapshot.connected = true;
+                    state.session = Some(session);
                 } else { self.emit("session_expired",Some("Saved session could not be validated. Sign in to continue.")); }
             }
             Ok(None) => (),
@@ -260,6 +284,7 @@ impl Engine {
         let session = api.login(wallet.trim(), &password).await?;
         drop(password);
         let balances = api.balances(&session).await?;
+        let audit_logs = api.logs(&session, None).await.unwrap_or_default();
         let saved = session.clone();
         let store = Arc::clone(&self.store);
         let persistent = tokio::task::spawn_blocking(move || store.save(&saved))
@@ -272,6 +297,7 @@ impl Engine {
             state.snapshot.connected = true;
             state.snapshot.error = None;
             state.snapshot.balances = balances;
+            state.snapshot.audit_logs = audit_logs;
             state.snapshot.history = self.history(&session);
             state.session = Some(session);
         }
@@ -294,6 +320,7 @@ impl Engine {
                 state.snapshot.wallet_id = None;
                 state.snapshot.persistent = false;
                 state.snapshot.balances.clear();
+                state.snapshot.audit_logs.clear();
                 state.snapshot.history.clear();
             }
             if cleared.is_err() {
@@ -344,11 +371,16 @@ impl Engine {
             } else {
                 None
             };
-            Ok::<_, anyhow::Error>((tokens, balances))
+            let audit_logs = if let Some(ref session) = session {
+                api.logs(session, None).await.unwrap_or_default()
+            } else {
+                vec![]
+            };
+            Ok::<_, anyhow::Error>((tokens, balances, audit_logs))
         }
         .await;
         match result {
-            Ok((tokens, balances)) => {
+            Ok((tokens, balances, audit_logs)) => {
                 let mut state = self.state.lock().unwrap();
                 // A late refresh may never apply data to a newly selected server/wallet.
                 if state.snapshot.settings.server != settings.server
@@ -362,6 +394,7 @@ impl Engine {
                 if let Some(balances) = balances {
                     state.snapshot.balances = balances;
                 }
+                state.snapshot.audit_logs = audit_logs;
                 Ok(state.snapshot.clone())
             }
             Err(error) => {

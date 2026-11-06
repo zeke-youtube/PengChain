@@ -3,13 +3,28 @@ import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import argon2 from "argon2";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { z } from "zod";
 import Database from "better-sqlite3";
 import { audit, id } from "./db.js";
 import { canonicalMiningInput, meetsDifficulty, pca10 } from "./pca10.js";
 import { ADJUSTMENT_WINDOW, adjustDifficulty } from "./difficulty.js";
 const now = () => Date.now();
+function nextPengReward(db: Database.Database): number {
+  const range = db
+    .prepare(
+      "SELECT CAST((SELECT value FROM meta WHERE key='peng_reward_min') AS INTEGER) minimum, CAST((SELECT value FROM meta WHERE key='peng_reward_max') AS INTEGER) maximum, CAST((SELECT value FROM meta WHERE key='peng_reward_last') AS INTEGER) last",
+    )
+    .get() as { minimum: number; maximum: number; last: number };
+  let reward = randomInt(range.minimum, range.maximum + 1);
+  if (range.minimum < range.maximum && reward === range.last) {
+    reward = reward === range.maximum ? reward - 1 : reward + 1;
+  }
+  db.prepare("UPDATE meta SET value=? WHERE key='peng_reward_last'").run(
+    String(reward),
+  );
+  return reward;
+}
 const walletSchema = z.object({ password: z.string().min(8).max(256) });
 const tokenSchema = z.object({
   name: z.string().min(1).max(80),
@@ -19,6 +34,10 @@ const tokenSchema = z.object({
   miningReward: z.number().int().positive().optional(),
   difficulty: z.number().int().min(1).max(64).optional(),
   initialIssuance: z.number().int().nonnegative().optional(),
+});
+const pengRewardRangeSchema = z.object({
+  minimum: z.number().int().min(1).max(1_000_000),
+  maximum: z.number().int().min(1).max(1_000_000),
 });
 export function buildApp(db: Database.Database): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -113,6 +132,21 @@ export function buildApp(db: Database.Database): FastifyInstance {
         )
         .all(req.wallet.id),
   );
+  app.get("/blockchain/api/admin/peng-reward-range", { preHandler: auth }, async (req: any, reply) => {
+    if (req.wallet.role !== "OWNER") return reply.code(403).send({ error: "owner access required" });
+    return db.prepare("SELECT CAST((SELECT value FROM meta WHERE key='peng_reward_min') AS INTEGER) minimum, CAST((SELECT value FROM meta WHERE key='peng_reward_max') AS INTEGER) maximum").get();
+  });
+  app.put("/blockchain/api/admin/peng-reward-range", { preHandler: auth }, async (req: any, reply) => {
+    if (req.wallet.role !== "OWNER") return reply.code(403).send({ error: "owner access required" });
+    const parsed = pengRewardRangeSchema.safeParse(req.body);
+    if (!parsed.success || parsed.data.minimum > parsed.data.maximum) return reply.code(400).send({ error: "invalid reward range" });
+    db.transaction(() => {
+      db.prepare("INSERT INTO meta(key,value) VALUES('peng_reward_min',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(parsed.data.minimum));
+      db.prepare("INSERT INTO meta(key,value) VALUES('peng_reward_max',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(parsed.data.maximum));
+      audit(db, "admin.peng_reward_range_changed", { walletId: req.wallet.id, ...parsed.data });
+    })();
+    return parsed.data;
+  });
   app.post(
     "/blockchain/api/token",
     { preHandler: auth },
@@ -286,6 +320,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
         .get(symbol) as any;
       if (!t || !t.mineable)
         return reply.code(400).send({ error: "mineable token not found" });
+      const reward = t.symbol === "PENG" ? nextPengReward(db) : 1;
       const jobId = id(),
         challenge = randomBytes(32),
         issued = now(),
@@ -298,7 +333,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
         issued,
         expires,
         t.difficulty,
-        t.symbol === "PENG" ? 10 : 1,
+        reward,
         null,
         null,
       );
@@ -318,7 +353,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
         difficulty: t.difficulty,
         issuedAt: issued,
         expiresAt: expires,
-        reward: t.symbol === "PENG" ? 10 : 1,
+        reward,
       };
     },
   );

@@ -158,7 +158,10 @@ describe("PengChain server", () => {
       });
     const accepted = await submit();
     expect(accepted.statusCode).toBe(200);
-    expect(accepted.json()).toMatchObject({ accepted: true, reward: 10 });
+    const receipt = accepted.json();
+    expect(receipt).toMatchObject({ accepted: true });
+    expect(receipt.reward).toBeGreaterThanOrEqual(5);
+    expect(receipt.reward).toBeLessThanOrEqual(15);
     const replay = await submit();
     expect(replay.statusCode).toBe(400);
     expect(replay.json()).toEqual({ error: "stale or already used job" });
@@ -168,10 +171,10 @@ describe("PengChain server", () => {
           "SELECT amount FROM balances WHERE wallet_id=? AND token_id='PENG'",
         )
         .get(walletId),
-    ).toEqual({ amount: 10 });
+    ).toEqual({ amount: receipt.reward });
     expect(
       db.prepare("SELECT issued_supply FROM tokens WHERE id='PENG'").get(),
-    ).toEqual({ issued_supply: 10 });
+    ).toEqual({ issued_supply: receipt.reward });
     expect(
       db.prepare("SELECT COUNT(*) count FROM mining_solutions").get(),
     ).toEqual({ count: 1 });

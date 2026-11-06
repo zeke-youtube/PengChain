@@ -191,6 +191,15 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [wallet, setWallet] = useState("");
   const [password, setPassword] = useState("");
+  const [tokenForm, setTokenForm] = useState({
+    name: "",
+    symbol: "",
+    maxSupply: "",
+    mineable: true,
+    miningReward: "1",
+    difficulty: "3",
+    initialIssuance: "0",
+  });
   const savedKey = useRef("");
   const apply = useCallback((snapshot: Snapshot) => {
     setState(snapshot);
@@ -361,6 +370,21 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  };
+  const createToken = async (event: FormEvent) => {
+    event.preventDefault();
+    await act("create_token", {
+      request: {
+        name: tokenForm.name,
+        symbol: tokenForm.symbol.toUpperCase(),
+        maxSupply: tokenForm.maxSupply ? Number(tokenForm.maxSupply) : null,
+        mineable: tokenForm.mineable,
+        miningReward: tokenForm.mineable ? Number(tokenForm.miningReward) : undefined,
+        difficulty: tokenForm.mineable ? Number(tokenForm.difficulty) : undefined,
+        initialIssuance: tokenForm.mineable ? 0 : Number(tokenForm.initialIssuance),
+      },
+    });
+    setTokenForm((current) => ({ ...current, name: "", symbol: "" }));
   };
   return (
     <div className="app" data-theme={theme}>
@@ -872,6 +896,23 @@ export default function App() {
                 </div>
                 <History state={state} />
               </section>
+              <section className="panel form-panel">
+                <div className="panel-head">
+                  <div>
+                    <h2>Create a token</h2>
+                    <p>Issue a server-authoritative custom asset from this wallet.</p>
+                  </div>
+                  <Sparkles size={19} />
+                </div>
+                <form className="two-col" onSubmit={(event) => void createToken(event)}>
+                  <label>Token name<input required value={tokenForm.name} onChange={(event) => setTokenForm({ ...tokenForm, name: event.target.value })} placeholder="Fish Coin" /></label>
+                  <label>Symbol<input required maxLength={16} value={tokenForm.symbol} onChange={(event) => setTokenForm({ ...tokenForm, symbol: event.target.value })} placeholder="FISH" /></label>
+                  <label>Maximum supply<input type="number" min="1" value={tokenForm.maxSupply} onChange={(event) => setTokenForm({ ...tokenForm, maxSupply: event.target.value })} placeholder="Unlimited" /></label>
+                  <label>Mode<select value={tokenForm.mineable ? "mineable" : "issued"} onChange={(event) => setTokenForm({ ...tokenForm, mineable: event.target.value === "mineable" })}><option value="mineable">Mineable</option><option value="issued">Initial issuance</option></select></label>
+                  {tokenForm.mineable ? <label>Mining reward<input type="number" min="1" value={tokenForm.miningReward} onChange={(event) => setTokenForm({ ...tokenForm, miningReward: event.target.value })} /></label> : <label>Initial issuance<input type="number" min="0" value={tokenForm.initialIssuance} onChange={(event) => setTokenForm({ ...tokenForm, initialIssuance: event.target.value })} /></label>}
+                  <button className="button primary" type="submit" disabled={disabled || !state?.walletId}><Sparkles size={15} /> Create token</button>
+                </form>
+              </section>
             </>
           )}
           {page === "Settings" && (
@@ -966,7 +1007,8 @@ export default function App() {
                 <div>
                   <h2>Activity log</h2>
                   <p>
-                    Latest 150 runtime events. No passwords or session cookies.
+                    Server audit history plus local runtime events. No passwords
+                    or session cookies.
                   </p>
                 </div>
                 <Activity size={18} />
@@ -985,6 +1027,27 @@ export default function App() {
                 ))}
                 {!state?.logs.length && (
                   <div className="empty">No activity yet.</div>
+                )}
+              </div>
+              <div className="panel-head">
+                <div>
+                  <h2>Server audit history</h2>
+                  <p>Hash-linked records from the authoritative ledger.</p>
+                </div>
+                <ShieldCheck size={18} />
+              </div>
+              <div className="logs">
+                {(state?.auditLogs ?? []).map((log) => (
+                  <div className="log-row" key={log.id}>
+                    <time>{time(log.createdAt)}</time>
+                    <span className="log-kind">
+                      {log.eventType.replaceAll(".", " ")}
+                    </span>
+                    <p>{log.payload}</p>
+                  </div>
+                ))}
+                {!state?.auditLogs.length && (
+                  <div className="empty">No server audit records yet.</div>
                 )}
               </div>
             </section>

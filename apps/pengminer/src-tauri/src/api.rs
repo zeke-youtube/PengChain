@@ -73,6 +73,35 @@ pub struct Receipt {
     pub digest: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditRecord {
+    pub id: u64,
+    pub event_type: String,
+    pub payload: String,
+    pub created_at: u64,
+    pub hash: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTokenRequest {
+    pub name: String,
+    pub symbol: String,
+    pub max_supply: Option<u64>,
+    pub mineable: bool,
+    pub mining_reward: Option<u64>,
+    pub difficulty: Option<u32>,
+    pub initial_issuance: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedToken {
+    pub token_id: String,
+    pub symbol: String,
+}
+
 impl Api {
     pub fn new(server: &str) -> Result<Self> {
         Ok(Self {
@@ -168,11 +197,43 @@ impl Api {
         )
         .await
     }
+    pub async fn logs(
+        &self,
+        session: &Session,
+        event_type: Option<&str>,
+    ) -> Result<Vec<AuditRecord>> {
+        self.verify_session(session)?;
+        let mut request = self
+            .client
+            .get(format!("{}/blockchain/api/logs", self.server))
+            .header("Cookie", &session.cookie)
+            .query(&[("limit", 100)]);
+        if let Some(event_type) = event_type {
+            request = request.query(&[("type", event_type)]);
+        }
+        Self::decode(request.send().await?).await
+    }
     pub async fn tokens(&self) -> Result<Vec<Token>> {
         Self::decode(
             self.client
                 .get(format!("{}/blockchain/api/token", self.server))
                 .query(&[("limit", 100)])
+                .send()
+                .await?,
+        )
+        .await
+    }
+    pub async fn create_token(
+        &self,
+        session: &Session,
+        request: &CreateTokenRequest,
+    ) -> Result<CreatedToken> {
+        self.verify_session(session)?;
+        Self::decode(
+            self.client
+                .post(format!("{}/blockchain/api/token", self.server))
+                .header("Cookie", &session.cookie)
+                .json(request)
                 .send()
                 .await?,
         )

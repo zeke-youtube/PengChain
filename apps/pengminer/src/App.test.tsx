@@ -52,6 +52,7 @@ const snapshot = (): Snapshot => ({
   tokens: [],
   history: [],
   logs: [],
+  auditLogs: [],
   error: null,
   cpuCount: 4,
 });

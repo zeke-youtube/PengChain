@@ -43,6 +43,13 @@ async fn refresh(engine: tauri::State<'_, Arc<Engine>>) -> Result<Snapshot, Stri
     engine.refresh().await.map_err(failure)
 }
 #[tauri::command]
+async fn create_token(
+    engine: tauri::State<'_, Arc<Engine>>,
+    request: pengminer::api::CreateTokenRequest,
+) -> Result<Snapshot, String> {
+    engine.create_token(request).await.map_err(failure)
+}
+#[tauri::command]
 async fn save_settings(
     engine: tauri::State<'_, Arc<Engine>>,
     settings: Settings,
@@ -80,6 +87,7 @@ pub fn run() {
             start_mining,
             stop_mining,
             refresh,
+            create_token,
             save_settings,
             devices
         ])

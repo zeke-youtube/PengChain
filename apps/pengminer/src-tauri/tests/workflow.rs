@@ -161,8 +161,9 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
     let stopped = engine.stop().await?;
     assert!(!stopped.running);
     assert!(stopped.hashes > 0);
-    assert_eq!(stopped.earnings, 20);
-    assert_eq!(stopped.balances[0].amount, 20);
+    assert!((10..=30).contains(&stopped.earnings));
+    assert_eq!(stopped.balances[0].amount, stopped.earnings);
+    let earned_before_restart = stopped.earnings;
     assert!(stopped.average_hashrate > 0.0);
     let restarted = Engine::new(
         store.clone(),
@@ -175,7 +176,7 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
     assert_eq!(restored.wallet_id.as_deref(), Some(wallet.as_str()));
     assert!(!restored.running);
     assert_eq!(restored.history.len(), 2);
-    assert_eq!(restored.balances[0].amount, 20);
+    assert_eq!(restored.balances[0].amount, earned_before_restart);
     let serialized = serde_json::to_string(&engine.snapshot())?;
     assert!(!serialized.contains("desktop-test-password"));
     assert!(!serialized.contains("peng_session="));
@@ -345,7 +346,7 @@ async fn rejected_submission_stops_and_emits_an_error() -> Result<()> {
     assert_eq!(engine.snapshot().accepted, 0);
     assert_eq!(engine.snapshot().rejected, 1);
     assert_eq!(engine.snapshot().earnings, 0);
-    assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(requests.load(std::sync::atomic::Ordering::Relaxed), 2);
     assert!(events
         .lock()
         .unwrap()

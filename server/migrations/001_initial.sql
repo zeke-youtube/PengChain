@@ -1,5 +1,8 @@
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+INSERT OR IGNORE INTO meta(key,value) VALUES('peng_reward_min','5');
+INSERT OR IGNORE INTO meta(key,value) VALUES('peng_reward_max','15');
+INSERT OR IGNORE INTO meta(key,value) VALUES('peng_reward_last','0');
 CREATE TABLE IF NOT EXISTS wallets(id TEXT PRIMARY KEY,password_hash TEXT NOT NULL,created_at INTEGER NOT NULL,banned_until INTEGER,role TEXT NOT NULL DEFAULT 'USER' CHECK(role IN ('USER','OWNER')));
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,wallet_id TEXT NOT NULL REFERENCES wallets(id),expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS tokens(id TEXT PRIMARY KEY,name TEXT NOT NULL,symbol TEXT NOT NULL UNIQUE COLLATE NOCASE,creator_wallet_id TEXT REFERENCES wallets(id),max_supply INTEGER,issued_supply INTEGER NOT NULL DEFAULT 0,mineable INTEGER NOT NULL,difficulty INTEGER NOT NULL,created_at INTEGER NOT NULL CHECK(max_supply IS NULL OR max_supply>=0));

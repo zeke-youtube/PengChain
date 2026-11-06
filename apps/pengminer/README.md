@@ -80,7 +80,9 @@ library sysroot is a local testing aid and is not a repository requirement.
   clicked may still be accepted; the server balance is authoritative.
 - Rewards and balances are integer base units. History is local acknowledged
   receipts (latest 200 for the current wallet/server, 1000 total), not an invented
-  server-wide transaction history. Logs retain at most 150 runtime messages.
+  server-wide transaction history. The Logs page shows both local runtime
+  messages and the authenticated server audit history. Local runtime logs retain
+  at most 150 messages; server records remain authoritative.
 - Passwords are used for login only. Cookies remain in Rust and are never sent to
   React, events, logs, or settings files. Sessions use Windows Credential Manager,
   macOS Keychain, or Linux Secret Service. If secure storage is unavailable, login

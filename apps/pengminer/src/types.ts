@@ -64,6 +64,13 @@ export interface Snapshot {
   }[];
   history: Solution[];
   logs: { time: number; kind: string; message: string }[];
+  auditLogs: {
+    id: number;
+    eventType: string;
+    payload: string;
+    createdAt: number;
+    hash: string;
+  }[];
   error: string | null;
   cpuCount: number;
 }

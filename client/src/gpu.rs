@@ -16,7 +16,7 @@ use std::{
     fmt,
     process::Command,
     ptr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -35,6 +35,19 @@ pub struct HardwareInfo {
     pub name: String,
     pub vendor: String,
     pub dedicated_memory_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuInfo {
+    pub id: String,
+    pub index: usize,
+    pub name: String,
+    pub vendor: String,
+    pub device_type: String,
+    pub memory_bytes: u64,
+    pub integrated: bool,
+    pub available: bool,
 }
 
 #[derive(Debug)]
@@ -172,6 +185,50 @@ pub fn device_choices() -> Result<Vec<String>> {
         .collect()
 }
 
+pub fn enumerate() -> Result<Vec<GpuInfo>> {
+    let controllers = system_video_controllers();
+    opencl_devices()?
+        .into_iter()
+        .enumerate()
+        .map(|(index, id)| {
+            let device = Device::new(id);
+            let name = device.name().context("Could not read OpenCL device name")?;
+            let vendor = device.vendor().unwrap_or_default();
+            let class = classify_opencl_device(&format!("{vendor} {name}"), &controllers);
+            Ok(GpuInfo {
+                id: format!("opencl:{index}"),
+                index,
+                name,
+                vendor,
+                device_type: "GPU".into(),
+                memory_bytes: 0,
+                integrated: class == HardwareClass::Integrated,
+                available: class == HardwareClass::Dedicated,
+            })
+        })
+        .collect()
+}
+
+pub fn preferred_device(devices: &[GpuInfo], selected: Option<&str>) -> Result<usize> {
+    if let Some(selected) = selected {
+        let index = selected
+            .strip_prefix("opencl:")
+            .context("Invalid GPU selection")?
+            .parse::<usize>()?;
+        let device = devices
+            .iter()
+            .find(|device| device.index == index)
+            .context("Selected GPU was not detected")?;
+        let _ = device;
+        return Ok(index);
+    }
+    devices
+        .iter()
+        .find(|device| device.available && !device.integrated)
+        .map(|device| device.index)
+        .context("No supported dedicated GPU was detected")
+}
+
 fn classify_opencl_device(opencl_name: &str, controllers: &[HardwareInfo]) -> HardwareClass {
     let normalized_name = normalized(opencl_name);
     let exact_matches: Vec<&HardwareInfo> = controllers
@@ -302,6 +359,26 @@ impl GpuMiner {
                 None => bail!("nonce space exhausted"),
             }
         }
+    }
+
+    pub fn solve_with_progress(
+        &self,
+        job: &MiningJob,
+        network: &str,
+        cancelled: &AtomicBool,
+        hashes: &AtomicU64,
+        _intensity: u8,
+    ) -> Result<Option<u64>> {
+        let before = hashes.load(Ordering::Relaxed);
+        let result = self.solve(job, network, cancelled)?;
+        if result.is_some() {
+            hashes.fetch_add(1, Ordering::Relaxed);
+        } else if !cancelled.load(Ordering::Relaxed) {
+            hashes.fetch_add(BATCH_SIZE as u64, Ordering::Relaxed);
+        } else {
+            hashes.fetch_max(before, Ordering::Relaxed);
+        }
+        Ok(result)
     }
 
     fn search_batch(

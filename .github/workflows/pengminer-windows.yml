@@ -21,6 +21,9 @@ jobs:
   server:
     name: Server checks
     runs-on: windows-latest
+    env:
+      npm_config_msvs_version: "2022"
+      GYP_MSVS_VERSION: "2022"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +33,7 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - name: Build and test server
         working-directory: server
-        run: npm config set msvs_version 2022 && npm ci && npm run build && npm test
+        run: npm ci && npm run build && npm test
 
   frontend:
     name: Frontend checks

@@ -4,13 +4,29 @@ use pengminer::{
     engine::{Engine, MiningEvent},
     storage::{Files, SessionStore, Settings},
 };
-use pengwallet::gpu::{preferred_device, GpuInfo};
+use pengwallet_protocol::{preferred_gpu, Device as GpuInfo};
 use std::{
     collections::HashMap,
     process::{Command, Stdio},
     sync::{Arc, Mutex},
     time::Duration,
 };
+fn cli_path() -> String {
+    std::env::var("PENGWALLET_ENGINE").unwrap_or_else(|_| {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .join("client/target/release")
+            .join(if cfg!(windows) {
+                "pengwallet.exe"
+            } else {
+                "pengwallet"
+            })
+            .to_string_lossy()
+            .into_owned()
+    })
+}
 #[derive(Default)]
 struct MemoryStore(Mutex<HashMap<String, String>>);
 impl SessionStore for MemoryStore {
@@ -74,10 +90,10 @@ fn validates_origins_settings_and_gpu_selection() {
         ..integrated.clone()
     };
     let devices = vec![integrated, dedicated];
-    assert_eq!(preferred_device(&devices, None).unwrap(), 1);
-    assert_eq!(preferred_device(&devices, Some("opencl:0")).unwrap(), 0);
-    assert!(preferred_device(&devices, Some("opencl:99")).is_err());
-    assert!(preferred_device(&[], None).is_err());
+    assert_eq!(preferred_gpu(&devices, None).unwrap(), 1);
+    assert_eq!(preferred_gpu(&devices, Some("opencl:0")).unwrap(), 0);
+    assert!(preferred_gpu(&devices, Some("opencl:99")).is_none());
+    assert!(preferred_gpu(&[], None).is_none());
 }
 #[tokio::test]
 async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()> {
@@ -132,6 +148,7 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
         Arc::new(move |event| event_copy.lock().unwrap().push(event)),
     )?;
     let settings = Settings {
+        engine_path: cli_path(),
         server: address,
         ..Settings::default()
     };
@@ -216,7 +233,7 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
 
 #[tokio::test]
 async fn enumeration_handles_missing_driver_without_cpu_fallback() -> Result<()> {
-    let (devices, warning) = Engine::devices().await?;
+    let (_, devices, warning) = pengminer::process::inspect(&cli_path()).await?;
     if warning.is_some() {
         assert!(devices.is_empty());
     }
@@ -328,6 +345,7 @@ async fn rejected_submission_stops_and_emits_an_error() -> Result<()> {
     )?;
     engine
         .save_settings(Settings {
+            engine_path: cli_path(),
             server,
             ..Settings::default()
         })
@@ -358,5 +376,52 @@ async fn rejected_submission_stops_and_emits_an_error() -> Result<()> {
         .any(|event| event.kind == "mining_error"));
     engine.stop().await?;
     task.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn missing_cli_is_an_error_not_a_bundled_library_fallback() -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join(if cfg!(windows) {
+        "pengwallet.exe"
+    } else {
+        "pengwallet"
+    });
+    let error = pengminer::process::inspect(&path.to_string_lossy())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("PengWallet CLI was not found"));
+    assert!(pengminer::process::executable("relative/pengwallet").is_err());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn rejects_legacy_output_and_reaps_an_unresponsive_child() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("pengwallet");
+    std::fs::write(&path, "#!/bin/sh\nprintf 'legacy output\\n'\n")?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+    assert!(pengminer::process::inspect(&path.to_string_lossy())
+        .await
+        .is_err());
+    // A test-only CLI fixture speaks the handshake but deliberately ignores Stop.
+    // exec keeps sleep in the exact child PID so termination/reaping is observable.
+    std::fs::write(&path,"#!/bin/sh\nprintf '%s\\n' '{\"protocol_version\":1,\"event\":\"ready\",\"cpu_count\":1,\"devices\":[],\"warning\":null}'\nexec sleep 60\n")?;
+    let stop = tokio::sync::Notify::new();
+    stop.notify_one();
+    let request = pengwallet_protocol::Request::Inspect {
+        version: pengwallet_protocol::VERSION,
+    };
+    let result = tokio::time::timeout(
+        Duration::from_secs(13),
+        pengminer::process::mine(&path.to_string_lossy(), request, &stop, false, |_| Ok(())),
+    )
+    .await?;
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("did not stop within 10 seconds"));
     Ok(())
 }

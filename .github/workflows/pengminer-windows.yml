@@ -1,24 +1,46 @@
 name: PengMiner Windows
+
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - apps/pengminer/**
+      - client/**
+      - crates/pengwallet-protocol/**
+      - .github/workflows/pengminer-windows.yml
   pull_request:
     paths:
-      [
-        "apps/pengminer/**",
-        "client/**",
-        ".github/workflows/pengminer-windows.yml",
-      ]
+      - apps/pengminer/**
+      - client/**
+      - crates/pengwallet-protocol/**
+      - .github/workflows/pengminer-windows.yml
+
 permissions:
   contents: read
+
+concurrency:
+  group: pengminer-windows-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
+      - name: Read application version
+        id: metadata
+        shell: pwsh
+        run: |
+          $version = node -p "require('./apps/pengminer/src-tauri/tauri.conf.json').version"
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw 'Invalid application version' }
+          "version=$version" >> $env:GITHUB_OUTPUT
       - name: Build server for integration tests
         working-directory: server
         run: npm ci && npm run build && npm test
@@ -28,15 +50,71 @@ jobs:
       - name: Frontend checks
         working-directory: apps/pengminer
         run: npm run build && npm run lint && npm test
-      - name: Shared CLI regression tests
+      - name: CLI regression tests
         run: cargo test --locked --manifest-path client/Cargo.toml
-      - name: Desktop core integration tests
+      - name: Build portable CLI (no installer)
+        run: cargo build --release --locked --manifest-path client/Cargo.toml
+      - name: CLI subprocess protocol and cancellation
+        run: python client/tests/engine_smoke.py
+      - name: Desktop subprocess integration tests
         run: cargo test --locked --manifest-path apps/pengminer/src-tauri/Cargo.toml --no-default-features
-      - name: Build Windows installer
+      - name: Build desktop installer with included CLI engine
         working-directory: apps/pengminer
         run: npm run tauri build -- --bundles nsis
+      - name: Verify the included engine matches the portable CLI
+        shell: pwsh
+        run: |
+          $engines = @(Get-ChildItem 'apps/pengminer/src-tauri/binaries/pengwallet-*.exe')
+          if ($engines.Count -ne 1) { throw 'Expected exactly one Windows engine executable' }
+          $portableHash = (Get-FileHash 'client/target/release/pengwallet.exe' -Algorithm SHA256).Hash
+          $includedHash = (Get-FileHash $engines[0].FullName -Algorithm SHA256).Hash
+          if ($portableHash -ne $includedHash) { throw 'The included engine and portable CLI differ' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PengWallet-Windows-portable
+          path: client/target/release/pengwallet.exe
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: PengMiner-Windows-NSIS
           path: apps/pengminer/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Peng*-Windows-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish both Windows downloads to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f release-assets/pengwallet.exe
+          shopt -s nullglob
+          installers=(release-assets/*-setup.exe)
+          test "${#installers[@]}" -eq 1
+          release_tag="pengminer-v${VERSION}-build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          cat > release-notes.md <<'NOTES'
+          ## Downloads
+          - **pengwallet.exe** — portable PengWallet CLI; no installer.
+          - **PengMiner_*_x64-setup.exe** — PengMiner desktop installer, including the separate PengWallet CLI mining engine.
+
+          The desktop launches its included CLI process; mining is not linked into the GUI.
+          WebView2 must already be installed. GPU mining requires a compatible vendor OpenCL driver.
+          Windows binaries are unsigned. Physical GPU performance is not validated by CI.
+          NOTES
+          gh release create "$release_tag" release-assets/*.exe \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "PengMiner ${VERSION} · build ${GITHUB_RUN_NUMBER}" \
+            --notes-file release-notes.md --draft
+          gh release edit "$release_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest

@@ -20,18 +20,7 @@ use std::{
 const SOURCE: &str = include_str!("kernels/pca10.cl");
 const BATCH_SIZE: usize = 16_384;
 
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GpuInfo {
-    pub id: String,
-    pub index: usize,
-    pub name: String,
-    pub vendor: String,
-    pub device_type: String,
-    pub memory_bytes: u64,
-    pub integrated: bool,
-    pub available: bool,
-}
+pub use pengwallet_protocol::Device as GpuInfo;
 
 pub fn enumerate() -> Result<Vec<GpuInfo>> {
     get_all_devices(CL_DEVICE_TYPE_GPU)?

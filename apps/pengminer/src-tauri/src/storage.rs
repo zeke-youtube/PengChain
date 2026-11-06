@@ -40,6 +40,7 @@ impl SessionStore for OsSessionStore {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
+    pub engine_path: String,
     pub server: String,
     pub token: String,
     pub network: String,
@@ -54,6 +55,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            engine_path: String::new(),
             server: "http://127.0.0.1:3000".into(),
             token: "PENG".into(),
             network: "pengchain-v1".into(),
@@ -70,6 +72,14 @@ impl Default for Settings {
 impl Settings {
     pub fn validate(&mut self) -> Result<()> {
         self.server = validate_server(&self.server)?;
+        self.engine_path = self.engine_path.trim().into();
+        if self.engine_path.len() > 4096
+            || self.engine_path.chars().any(char::is_control)
+            || (!self.engine_path.is_empty()
+                && !std::path::Path::new(&self.engine_path).is_absolute())
+        {
+            bail!("PengWallet engine override must be an absolute executable path");
+        }
         let max = std::thread::available_parallelism()?.get();
         if self.cpu_threads == 0 || self.cpu_threads > max {
             bail!("CPU thread count must be between 1 and {max}");

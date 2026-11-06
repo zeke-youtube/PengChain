@@ -66,12 +66,6 @@ pub struct Token {
     pub mineable: u8,
     pub difficulty: u32,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Receipt {
-    pub accepted: bool,
-    pub reward: u64,
-    pub digest: String,
-}
 
 impl Api {
     pub fn new(server: &str) -> Result<Self> {
@@ -173,38 +167,6 @@ impl Api {
             self.client
                 .get(format!("{}/blockchain/api/token", self.server))
                 .query(&[("limit", 100)])
-                .send()
-                .await?,
-        )
-        .await
-    }
-    pub async fn job(
-        &self,
-        session: &Session,
-        symbol: &str,
-    ) -> Result<pengwallet::mining::MiningJob> {
-        self.verify_session(session)?;
-        let job: pengwallet::mining::MiningJob = Self::decode(
-            self.client
-                .get(format!("{}/blockchain/api/mining/job", self.server))
-                .header("Cookie", &session.cookie)
-                .query(&[("symbol", symbol)])
-                .send()
-                .await?,
-        )
-        .await?;
-        if job.wallet_id != session.wallet_id {
-            bail!("Server returned a job for another wallet");
-        }
-        Ok(job)
-    }
-    pub async fn submit(&self, session: &Session, job: &str, nonce: u64) -> Result<Receipt> {
-        self.verify_session(session)?;
-        Self::decode(
-            self.client
-                .post(format!("{}/blockchain/api/mining/submit", self.server))
-                .header("Cookie", &session.cookie)
-                .json(&serde_json::json!({"jobId":job,"nonce":nonce.to_string()}))
                 .send()
                 .await?,
         )

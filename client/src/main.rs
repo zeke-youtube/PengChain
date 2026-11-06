@@ -54,6 +54,14 @@ enum Command {
         recipient: String,
         amount: u64,
     },
+    /// Read the server's append-only audit log
+    Logs {
+        /// Optional event filter such as mining, tx, reward, ban, or token
+        kind: Option<String>,
+        /// Number of log pages to request
+        #[arg(long, default_value_t = 1)]
+        page: u32,
+    },
     /// Keep mining until Ctrl+C (CPU by default; --gpu for OpenCL)
     Mine {
         symbol: String,
@@ -114,6 +122,15 @@ struct MiningReceipt {
     accepted: bool,
     reward: u64,
     digest: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AuditLog {
+    event_type: String,
+    payload: String,
+    created_at: i64,
+    hash: String,
 }
 
 #[tokio::main]
@@ -331,6 +348,39 @@ async fn run(cli: Cli) -> Result<()> {
                     .context("Server omitted the transfer receipt")?,
             );
             ui::hint("Check your remaining funds: pengwallet balance");
+        }
+        Command::Logs { kind, page } => {
+            let session = load_session()?;
+            let mut request = http
+                .get(endpoint("/blockchain/api/logs"))
+                .header("Cookie", session.cookie)
+                .query(&[("page", page.to_string()), ("limit", "50".to_owned())]);
+            if let Some(kind) = &kind {
+                let filter = log_filter(kind);
+                request = request.query(&[("type", filter)]);
+            }
+            let (_, value) = checked(request.send().await?).await?;
+            if cli.json {
+                return print_json(&value);
+            }
+            let logs: Vec<AuditLog> = decode(&value)?;
+            ui::heading("Server audit log");
+            ui::field("Wallet", session.wallet_id);
+            if let Some(kind) = kind {
+                ui::field("Filter", kind);
+            }
+            if logs.is_empty() {
+                ui::hint("No audit records matched this filter.");
+            } else {
+                for log in logs {
+                    println!();
+                    ui::field("Event", &log.event_type);
+                    ui::field("Time", log.created_at.to_string());
+                    ui::field("Details", ui::clean(&log.payload));
+                    ui::field("Proof", &log.hash[..12.min(log.hash.len())]);
+                }
+                ui::hint("The server audit log is hash-linked for tamper evidence.");
+            }
         }
         Command::Mine {
             symbol,
@@ -644,6 +694,17 @@ fn choose_gpu_device(requested: Option<usize>, json: bool) -> Result<usize> {
         })?,
     )?;
     Ok(index)
+}
+
+fn log_filter(kind: &str) -> String {
+    match kind.to_ascii_lowercase().as_str() {
+        "block" | "reward" => "mining.accepted".to_owned(),
+        "tx" | "transaction" | "transfer" => "transfer".to_owned(),
+        "ban" => "ban".to_owned(),
+        "mining" => "mining".to_owned(),
+        "token" => "token".to_owned(),
+        other => other.to_owned(),
+    }
 }
 
 fn save_session(session: &LocalSession) -> Result<()> {

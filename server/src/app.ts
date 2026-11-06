@@ -81,6 +81,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
       now() + 86400000,
       now(),
     );
+    audit(db, "wallet.login", { walletId: w.id });
     reply.setCookie("peng_session", sid, {
       httpOnly: true,
       sameSite: "strict",
@@ -94,6 +95,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     "/blockchain/api/wallet/logout",
     { preHandler: auth },
     async (req: any, reply) => {
+      audit(db, "wallet.logout", { walletId: req.wallet.id });
       db.prepare("DELETE FROM sessions WHERE id=?").run(
         req.cookies.peng_session,
       );
@@ -300,6 +302,13 @@ export function buildApp(db: Database.Database): FastifyInstance {
         null,
         null,
       );
+      audit(db, "mining.job_issued", {
+        jobId,
+        tokenId: t.id,
+        walletId: req.wallet.id,
+        difficulty: t.difficulty,
+        expiresAt: expires,
+      });
       return {
         jobId,
         tokenId: t.id,

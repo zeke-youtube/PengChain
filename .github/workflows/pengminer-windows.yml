@@ -1,37 +1,95 @@
 name: PengMiner Windows
+
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      [
-        "apps/pengminer/**",
-        "client/**",
-        ".github/workflows/pengminer-windows.yml",
-      ]
+      - "apps/pengminer/**"
+      - "client/**"
+      - "server/**"
+      - ".github/workflows/pengminer-windows.yml"
+
+concurrency:
+  group: pengminer-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
+
 jobs:
-  build:
+  server:
+    name: Server checks
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build server for integration tests
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Build and test server
         working-directory: server
         run: npm ci && npm run build && npm test
+
+  frontend:
+    name: Frontend checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/pengminer/package-lock.json
       - name: Install desktop dependencies
         working-directory: apps/pengminer
         run: npm ci
-      - name: Frontend checks
+      - name: Build, lint, and test frontend
         working-directory: apps/pengminer
         run: npm run build && npm run lint && npm test
-      - name: Shared CLI regression tests
+
+  cli:
+    name: CLI checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client
+      - name: Test CLI
         run: cargo test --locked --manifest-path client/Cargo.toml
-      - name: Desktop core integration tests
+
+  desktop-core:
+    name: Desktop core checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/pengminer/src-tauri
+      - name: Test desktop core
         run: cargo test --locked --manifest-path apps/pengminer/src-tauri/Cargo.toml --no-default-features
+
+  installer:
+    name: Windows installer
+    needs: [server, frontend, cli, desktop-core]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/pengminer/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/pengminer/src-tauri
+      - name: Install desktop dependencies
+        working-directory: apps/pengminer
+        run: npm ci
       - name: Build Windows installer
         working-directory: apps/pengminer
         run: npm run tauri build -- --bundles nsis

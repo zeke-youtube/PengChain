@@ -56,7 +56,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             engine_path: String::new(),
-            server: "http://127.0.0.1:3000".into(),
+            server: "https://pengchain.pikastudio.org".into(),
             token: "PENG".into(),
             network: "pengchain-v1".into(),
             device: "cpu".into(),

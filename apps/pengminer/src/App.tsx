@@ -42,7 +42,7 @@ import type { Gpu, MiningEvent, Settings, Snapshot } from "./types";
 
 const defaults: Settings = {
   enginePath: "",
-  server: "http://127.0.0.1:3000",
+  server: "https://pengchain.pikastudio.org",
   token: "PENG",
   network: "pengchain-v1",
   device: "cpu",

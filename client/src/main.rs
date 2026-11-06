@@ -21,7 +21,7 @@ use std::{
 #[command(name = "PengWallet", version = concat!(env!("CARGO_PKG_VERSION"), "\nCompiled: ", env!("BUILD_DATE")), about = "Your PengChain wallet and CPU/GPU miner", after_help = "Quick start:\n  pengwallet create\n  pengwallet login\n  pengwallet balance\n  pengwallet mine PENG")]
 struct Cli {
     /// PengChain server address
-    #[arg(long, global = true, default_value = "http://127.0.0.1:3000")]
+    #[arg(long, global = true, default_value = "https://pengchain.pikastudio.org")]
     server: String,
     /// Print JSON for scripts instead of the terminal layout
     #[arg(long, global = true)]

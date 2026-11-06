@@ -28,7 +28,7 @@ npm run tauri dev
 ```
 
 Use an existing PengChain wallet to sign in. The default server is
-`http://127.0.0.1:3000`; remote servers require HTTPS. Settings allow choosing a
+`https://pengchain.pikastudio.org`; remote servers require HTTPS. Settings allow choosing a
 server origin, network ID, token, device, CPU thread count, and intensity. Select
 your GPU by its driver-reported name, then click **START MINING**. **STOP MINING**
 cancels work and waits for CPU threads or the current GPU dispatch to finish.

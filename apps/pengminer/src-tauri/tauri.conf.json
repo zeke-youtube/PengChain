@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "identifier": "studio.pika.pengminer",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run prepare-engine && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run prepare-engine && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -27,9 +27,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
+    "targets": ["nsis"],
     "publisher": "PikaStudio",
     "shortDescription": "PengChain desktop CPU and OpenCL miner",
     "category": "Utility",
@@ -47,6 +45,7 @@
       "webviewInstallMode": {
         "type": "skip"
       }
-    }
+    },
+    "externalBin": ["binaries/pengwallet"]
   }
 }

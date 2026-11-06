@@ -1,49 +1,36 @@
-# PengMiner V1 validation
+# PengMiner CLI-process architecture validation
 
-Validated in the Linux cloud on 2026-11-06. These are observed results, not claims
-about Windows or physical GPU execution.
+Observed in Linux cloud on 2026-11-06. PengMiner launches the separate PengWallet
+CLI; the desktop no longer links the mining implementation.
 
-| Check | Result |
+| Check | Observed result |
 | --- | --- |
-| React/TypeScript production build (`npm run build`) | Passed |
-| TypeScript (`npm run typecheck`) | Passed |
-| ESLint (`npm run lint`) | Passed |
-| React/Vitest tests | 5 passed |
-| Desktop Rust integration tests, without the GUI feature | 4 passed |
-| Strict desktop Clippy, including native code and all targets | Passed |
-| Tauri build with embedded production assets, debug, no bundle | Passed; Linux executable produced |
-| Native window startup/rendering on Xvfb | Passed with isolated Linux library mounts |
-| Native UI login → Start → real server reward → Stop | Passed; 3 accepted solutions, 30 PENG base units, no new solutions after Stop |
-| Browser rendering/navigation | All six pages rendered; browser-only mode correctly disables native operations |
-| Shared PengWallet library tests | 6 passed; hardware-dependent OpenCL test is opt-in |
-| Explicit OpenCL kernel conformance with software PoCL | Passed, including GPU-batch work counters and intensity |
-| Existing CLI real-server smoke test | Passed, including auto-login, transfers, repeated rewards, Ctrl+C and JSON output |
-| Independent CLI mining HTTP smoke test | Passed |
-| Existing TypeScript server build/tests | Build passed; 5 tests passed |
-| Windows Credential Manager round-trip test | Added under `cfg(windows)`; not run in Linux |
-| Windows/WebView2 runtime, tray and notifications | Not run |
-| RTX 5070 Ti / other physical GPU | Not available; not run |
-| NSIS Windows installer | Build configuration and Windows CI provided; installer not built here |
-| PPU detection/mining | Intentionally not implemented or enabled |
+| Desktop frontend build, TypeScript, ESLint | Passed |
+| React tests | 5 passed |
+| Desktop subprocess integration tests | 6 passed |
+| CLI library regression tests | 6 passed; physical OpenCL test remains opt-in |
+| CLI subprocess protocol smoke test | Passed: real rewards, telemetry, Stop, stdin EOF cancellation, no session file |
+| Existing CLI real-server and mining smoke tests | Passed |
+| Strict Clippy for CLI and complete native desktop | Passed |
+| Native Tauri build with prepared CLI sidecar | Passed on Linux |
+| Actual native-window login → Start → Stop | 3 accepted solutions, 30 PENG; no new rewards after Stop |
+| Separate process ownership | Exactly one CLI engine observed; no credentials in arguments; child exited and was reaped on Stop |
+| Installer input consistency | Portable CLI, target-suffixed sidecar, and adjacent development engine were byte-identical |
+| Desktop dependency graph | No `pengwallet` mining crate or `opencl3`; only the data-only protocol crate is shared |
+| Missing/legacy engine and forced termination | Passed, including termination/reaping after ten-second stop timeout |
+| Updated Windows portable/NSIS outputs | Configured for the Windows workflow; current build/release status is pending |
+| Physical GPU and Windows-specific runtime behavior | Require the relevant hardware/OS; not claimed by Linux results |
 
-The backend integration tests start an isolated real PengChain server and SQLite
-file. They exercise actual proof computation and rewards, authentication failures,
-balance retrieval, persistence through a dependency-injected credential store,
-restart without automatic mining, singleton start, active CPU cancellation, event
-emission, GPU selection policy and driver absence, network failure, and rejected
-submission handling. No fake mining results are used by the product.
+The Windows workflow builds the standalone portable CLI and the app installer
+containing that same CLI, uploads both artifacts, and publishes both to a GitHub
+Release after successful builds on main. Pull-request runs do not publish releases.
+Current remote build/release status must be read from GitHub Actions rather than
+inferred from local results.
 
-The native UI check used actual mouse/keyboard input under Xvfb and checked the
-server database independently of the displayed counters. WebKit/GTK development
-libraries were extracted from signed Debian packages into a workspace-local
-sysroot; read-only mount mappings supplied WebKit's expected subprocess paths.
-This is a cloud testing accommodation, not a required installation procedure.
-No WebKit sandbox bypass was added to the application.
-
-On this machine the OS Secret Service was unavailable; the native app correctly
-used an in-memory login and reported that persistence was unavailable. Real
-Windows secure storage is tested only by the Windows-specific test when executed
-on a Windows host.
-
-Use the Windows workflow or the README's build instructions for platform
-validation. Installer signing and physical GPU throughput are not claimed.
+The previous direct-library native smoke evidence is superseded by an actual
+subprocess native check: a separate CLI PID computed and submitted the proofs;
+its process disappeared after Stop. Linux GUI testing used Xvfb and isolated
+read-only WebKit library mounts without adding a sandbox bypass to the product.
+The Linux credential service was unavailable, and the app used its explicit
+in-memory session fallback. Windows Credential Manager has its own Windows-only
+round-trip test in the workflow.

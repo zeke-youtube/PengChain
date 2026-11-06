@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use pengwallet_protocol::Job;
 use reqwest::{redirect::Policy, Client, Response};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::time::Duration;
@@ -239,13 +240,9 @@ impl Api {
         )
         .await
     }
-    pub async fn job(
-        &self,
-        session: &Session,
-        symbol: &str,
-    ) -> Result<pengwallet::mining::MiningJob> {
+    pub async fn job(&self, session: &Session, symbol: &str) -> Result<Job> {
         self.verify_session(session)?;
-        let job: pengwallet::mining::MiningJob = Self::decode(
+        let job: Job = Self::decode(
             self.client
                 .get(format!("{}/blockchain/api/mining/job", self.server))
                 .header("Cookie", &session.cookie)

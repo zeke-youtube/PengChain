@@ -9,6 +9,6 @@ The PengWallet Rust CLI lives under `client/`; see its [development instructions
 ## PengMiner desktop
 
 The Tauri 2 Windows desktop miner lives in [`apps/pengminer`](apps/pengminer).
-It links the existing PengWallet mining library and provides a React dashboard,
+It runs the separately bundled PengWallet CLI process and provides a React dashboard,
 CPU/OpenCL controls, wallet login, and live measured statistics. See its
 [setup, build, and validation instructions](apps/pengminer/README.md).

@@ -1,22 +1,12 @@
 use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Debug, Clone, Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MiningJob {
-    pub job_id: String,
-    pub token_id: String,
-    pub wallet_id: String,
-    pub challenge: String,
-    pub difficulty: usize,
-    pub expires_at: u64,
-}
+pub use pengwallet_protocol::Job as MiningJob;
 
 pub(crate) fn canonical_prefix(job: &MiningJob, network: &str) -> Result<Vec<u8>> {
     let challenge = URL_SAFE_NO_PAD
@@ -51,7 +41,7 @@ pub(crate) fn pca10(input: &[u8]) -> [u8; 32] {
 pub(crate) fn meets_difficulty(digest: &[u8; 32], difficulty: usize) -> bool {
     difficulty <= 64
         && digest[..difficulty / 2].iter().all(|byte| *byte == 0)
-        && (difficulty % 2 == 0 || digest[difficulty / 2] >> 4 == 0)
+        && (difficulty.is_multiple_of(2) || digest[difficulty / 2] >> 4 == 0)
 }
 
 pub fn solve(job: &MiningJob, network: &str, cancelled: &AtomicBool) -> Result<Option<u64>> {

@@ -27,6 +27,7 @@ const snapshot = (): Snapshot => ({
   walletId: null,
   persistent: false,
   settings: {
+    enginePath: "",
     server: "http://127.0.0.1:3000",
     token: "PENG",
     network: "pengchain-v1",

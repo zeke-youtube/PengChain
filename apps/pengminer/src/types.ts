@@ -1,4 +1,5 @@
 export interface Settings {
+  enginePath: string;
   server: string;
   token: string;
   network: string;

@@ -133,3 +133,18 @@ JSON creation output includes `walletId`, `role`, and `signedIn: true` after the
 session has been saved. If the wallet is created but automatic login or saving the
 session fails, the command exits with an error containing the new wallet ID and
 manual login instructions. Do not repeat creation to recover that wallet.
+
+
+## PengMiner engine mode
+
+`pengwallet engine --json` provides the versioned JSON-lines subprocess interface
+used by PengMiner. Ordinary terminal commands remain unchanged. The desktop sends
+an initial inspect/mining request through stdin and receives protocol frames on
+stdout. A `{"command":"stop"}` frame or stdin EOF requests cooperative shutdown.
+Authentication is supplied through the private pipe, not arguments, environment
+variables, or the CLI's usual on-disk session file. Engine requests do not prompt.
+The shared schemas live in `crates/pengwallet-protocol`; only the CLI links the
+actual CPU/OpenCL mining implementation.
+
+The portable Windows distribution is `pengwallet.exe`, with no installer. The
+separate PengMiner NSIS installer includes a matching copy as its child engine.

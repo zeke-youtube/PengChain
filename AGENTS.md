@@ -87,4 +87,4 @@ It is not a blockchain. Do not add blocks, chained hashes, peer-to-peer networki
 
 ## Important known gaps
 
-The current implementation still needs adaptive difficulty, complete administrative ban/unban flows, trusted local first-wallet bootstrap enforcement, fuller rate-limit policy coverage, HTTPS deployment guidance, comprehensive restart/concurrency tests, and the complete Rust client. These are tracked as unfinished work, not as acceptable placeholders.
+The current implementation still needs complete administrative ban/unban flows, trusted local first-wallet bootstrap enforcement, fuller rate-limit policy coverage, HTTPS deployment guidance, comprehensive restart/concurrency tests, and the complete Rust client. These are tracked as unfinished work, not as acceptable placeholders.

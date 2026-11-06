@@ -4,7 +4,7 @@ mod ui;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use dialoguer::{Input, Password};
+use dialoguer::{Input, Password, Select};
 use reqwest::{Client, Response};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -81,6 +81,11 @@ struct LocalSession {
     cookie: String,
 }
 
+#[derive(Serialize, Deserialize, Default)]
+struct Settings {
+    gpu_device: Option<usize>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Wallet {
@@ -119,8 +124,24 @@ async fn main() {
     let json = cli.json;
     if let Err(error) = run(cli).await {
         if json {
-            eprintln!("{}", serde_json::json!({"error": error.to_string()}));
+            if let Some(gpu_error) = error.downcast_ref::<gpu::GpuError>() {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({
+                        "error": {
+                            "code": gpu_error.code,
+                            "message": gpu_error.message
+                        }
+                    })
+                );
+            } else {
+                eprintln!("{}", serde_json::json!({"error": error.to_string()}));
+            }
         } else {
+            if let Some(gpu_error) = error.downcast_ref::<gpu::GpuError>() {
+                ui::error(&gpu_error.human_message);
+                std::process::exit(1);
+            }
             let message = match error.downcast_ref::<reqwest::Error>() {
                 Some(error) if error.is_connect() => {
                     "Could not reach the server. Check --server and make sure PengChain is running."
@@ -321,6 +342,11 @@ async fn run(cli: Cli) -> Result<()> {
             gpu_device,
         } => {
             let session = load_session()?;
+            let gpu_device = if gpu {
+                choose_gpu_device(gpu_device, cli.json)?
+            } else {
+                0
+            };
             let limit = if once { Some(1) } else { jobs };
             let mut totals = MiningTotals::default();
             if !cli.json {
@@ -335,7 +361,7 @@ async fn run(cli: Cli) -> Result<()> {
                 );
             }
             let result = tokio::select! {
-                result = mine_loop(&http, base, &session, MiningOptions { symbol: &symbol, network: &network, limit, json: cli.json, gpu, gpu_device: gpu_device.unwrap_or(0) }, &mut totals) => result,
+                result = mine_loop(&http, base, &session, MiningOptions { symbol: &symbol, network: &network, limit, json: cli.json, gpu, gpu_device }, &mut totals) => result,
                 signal = tokio::signal::ctrl_c() => {
                     signal.context("Could not listen for Ctrl+C")?;
                     if !cli.json { ui::progress("Stopping miner…"); }
@@ -574,6 +600,53 @@ fn session_path() -> Result<PathBuf> {
     fs::create_dir_all(&root)?;
     Ok(root.join("session.json"))
 }
+
+fn settings_path() -> Result<PathBuf> {
+    let root = dirs::data_dir()
+        .context("Could not determine application-data directory")?
+        .join("PengChain");
+    fs::create_dir_all(&root)?;
+    Ok(root.join("settings.json"))
+}
+
+fn choose_gpu_device(requested: Option<usize>, json: bool) -> Result<usize> {
+    if let Some(index) = requested {
+        return Ok(index);
+    }
+
+    let choices = gpu::device_choices()?;
+    let settings_path = settings_path()?;
+    if let Ok(data) = fs::read(&settings_path) {
+        if let Ok(settings) = serde_json::from_slice::<Settings>(&data) {
+            if let Some(index) = settings.gpu_device {
+                if index < choices.len() {
+                    return Ok(index);
+                }
+            }
+        }
+    }
+
+    if json {
+        if choices.len() == 1 {
+            return Ok(0);
+        }
+        bail!("Multiple OpenCL GPUs detected. Pass --gpu-device in JSON mode.");
+    }
+
+    let index = Select::new()
+        .with_prompt("Choose the OpenCL GPU to use")
+        .items(&choices)
+        .default(0)
+        .interact()?;
+    fs::write(
+        settings_path,
+        serde_json::to_vec_pretty(&Settings {
+            gpu_device: Some(index),
+        })?,
+    )?;
+    Ok(index)
+}
+
 fn save_session(session: &LocalSession) -> Result<()> {
     fs::write(session_path()?, serde_json::to_vec_pretty(session)?)?;
     Ok(())

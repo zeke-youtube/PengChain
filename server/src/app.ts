@@ -8,6 +8,7 @@ import { z } from "zod";
 import Database from "better-sqlite3";
 import { audit, id } from "./db.js";
 import { canonicalMiningInput, meetsDifficulty, pca10 } from "./pca10.js";
+import { ADJUSTMENT_WINDOW, adjustDifficulty } from "./difficulty.js";
 const now = () => Date.now();
 const walletSchema = z.object({ password: z.string().min(8).max(256) });
 const tokenSchema = z.object({
@@ -371,6 +372,41 @@ export function buildApp(db: Database.Database): FastifyInstance {
           db.prepare(
             "INSERT INTO balances VALUES(?,?,?) ON CONFLICT(wallet_id,token_id) DO UPDATE SET amount=amount+excluded.amount",
           ).run(j.wallet_id, j.token_id, j.reward);
+          const acceptedCount = (
+            db
+              .prepare(
+                "SELECT COUNT(*) count FROM mining_solutions WHERE token_id=?",
+              )
+              .get(j.token_id) as { count: number }
+          ).count;
+          let newDifficulty = j.difficulty;
+          if (acceptedCount % ADJUSTMENT_WINDOW === 0) {
+            const timestamps = (
+              db
+                .prepare(
+                  "SELECT accepted_at acceptedAt FROM mining_solutions WHERE token_id=? ORDER BY accepted_at DESC LIMIT ?",
+                )
+                .all(j.token_id, ADJUSTMENT_WINDOW) as Array<{
+                acceptedAt: number;
+              }>
+            )
+              .map((row) => row.acceptedAt)
+              .reverse();
+            const adjustment = adjustDifficulty(j.difficulty, timestamps);
+            newDifficulty = adjustment.difficulty;
+            db.prepare("UPDATE tokens SET difficulty=? WHERE id=?").run(
+              newDifficulty,
+              j.token_id,
+            );
+            audit(db, "mining.difficulty_adjusted", {
+              tokenId: j.token_id,
+              previousDifficulty: j.difficulty,
+              newDifficulty,
+              acceptedCount,
+              averageIntervalSeconds: adjustment.averageIntervalSeconds,
+              direction: adjustment.direction,
+            });
+          }
           audit(db, "mining.accepted", {
             jobId: j.id,
             tokenId: j.token_id,
@@ -382,6 +418,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
             accepted: true,
             reward: j.reward,
             digest: digest.toString("hex"),
+            difficulty: newDifficulty,
           };
         })();
         return result;

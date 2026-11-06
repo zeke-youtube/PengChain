@@ -12,6 +12,9 @@ use opencl3::{
     types::{cl_device_id, CL_BLOCKING},
 };
 use std::{
+    error::Error,
+    fmt,
+    process::Command,
     ptr,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -19,6 +22,182 @@ use std::{
 
 const SOURCE: &str = include_str!("kernels/pca10.cl");
 const BATCH_SIZE: usize = 16_384;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HardwareClass {
+    Dedicated,
+    Integrated,
+    Uncertain,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HardwareInfo {
+    pub name: String,
+    pub vendor: String,
+    pub dedicated_memory_bytes: Option<u64>,
+}
+
+#[derive(Debug)]
+pub struct GpuError {
+    pub code: &'static str,
+    pub message: String,
+    pub human_message: String,
+}
+
+impl fmt::Display for GpuError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.message.fmt(formatter)
+    }
+}
+
+impl Error for GpuError {}
+
+fn gpu_error(
+    code: &'static str,
+    message: impl Into<String>,
+    human_message: impl Into<String>,
+) -> anyhow::Error {
+    anyhow::Error::new(GpuError {
+        code,
+        message: message.into(),
+        human_message: human_message.into(),
+    })
+}
+
+pub fn classify_hardware(info: &HardwareInfo) -> HardwareClass {
+    let name = info.name.to_ascii_lowercase();
+    let vendor = info.vendor.to_ascii_lowercase();
+    let memory = info.dedicated_memory_bytes.unwrap_or_default();
+    let has_discrete_vendor = vendor.contains("nvidia")
+        || vendor.contains("amd")
+        || vendor.contains("advanced micro devices")
+        || name.contains("geforce")
+        || name.contains("radeon rx")
+        || name.contains("radeon pro")
+        || name.contains("arc ");
+    let known_integrated_name = name.contains("uhd graphics")
+        || name.contains("iris xe")
+        || name.contains("iris plus")
+        || name.contains("integrated graphics")
+        || name == "amd radeon graphics";
+
+    if has_discrete_vendor && memory >= 512 * 1024 * 1024 && !known_integrated_name {
+        HardwareClass::Dedicated
+    } else if known_integrated_name || (vendor.contains("intel") && memory < 2 * 1024 * 1024 * 1024)
+    {
+        HardwareClass::Integrated
+    } else {
+        HardwareClass::Uncertain
+    }
+}
+
+fn normalized(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+#[cfg(windows)]
+fn system_video_controllers() -> Vec<HardwareInfo> {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterCompatibility,AdapterRAM | ConvertTo-Json -Compress",
+        ])
+        .output();
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return Vec::new();
+    };
+    let values = match value {
+        serde_json::Value::Array(values) => values,
+        value => vec![value],
+    };
+    values
+        .into_iter()
+        .filter_map(|value| {
+            Some(HardwareInfo {
+                name: value.get("Name")?.as_str()?.to_owned(),
+                vendor: value
+                    .get("AdapterCompatibility")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                dedicated_memory_bytes: value.get("AdapterRAM").and_then(serde_json::Value::as_u64),
+            })
+        })
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn system_video_controllers() -> Vec<HardwareInfo> {
+    Vec::new()
+}
+
+fn opencl_devices() -> Result<Vec<cl_device_id>> {
+    let devices = get_all_devices(CL_DEVICE_TYPE_GPU).map_err(|error| {
+        gpu_error(
+            "opencl_driver_missing",
+            format!("OpenCL GPU enumeration failed: {error}"),
+            "OpenCL drivers are missing or unavailable. Install the latest driver from NVIDIA, AMD, or Intel, then restart PengWallet. CPU fallback is disabled.",
+        )
+    })?;
+    if devices.is_empty() {
+        return Err(gpu_error(
+            "no_gpu",
+            "No OpenCL GPU devices were detected",
+            "No GPU was detected. Install a supported GPU driver or run without --gpu to use CPU mining.",
+        ));
+    }
+    Ok(devices)
+}
+
+pub fn device_choices() -> Result<Vec<String>> {
+    opencl_devices()?
+        .into_iter()
+        .map(|device| {
+            Device::new(device)
+                .name()
+                .context("Could not read OpenCL device name")
+        })
+        .collect()
+}
+
+fn classify_opencl_device(opencl_name: &str, controllers: &[HardwareInfo]) -> HardwareClass {
+    let normalized_name = normalized(opencl_name);
+    let exact_matches: Vec<&HardwareInfo> = controllers
+        .iter()
+        .filter(|controller| {
+            let candidate = normalized(&controller.name);
+            candidate.contains(&normalized_name) || normalized_name.contains(&candidate)
+        })
+        .collect();
+    if exact_matches.len() == 1 {
+        return classify_hardware(exact_matches[0]);
+    }
+
+    let vendor_matches: Vec<&HardwareInfo> = controllers
+        .iter()
+        .filter(|controller| {
+            let vendor = normalized(&controller.vendor);
+            !vendor.is_empty() && normalized_name.contains(&vendor)
+        })
+        .collect();
+    if vendor_matches.len() == 1 {
+        return classify_hardware(vendor_matches[0]);
+    }
+
+    HardwareClass::Uncertain
+}
 
 pub struct GpuMiner {
     kernel: Kernel,
@@ -32,12 +211,37 @@ pub struct GpuMiner {
 
 impl GpuMiner {
     pub fn new(index: usize) -> Result<Self> {
-        let devices = get_all_devices(CL_DEVICE_TYPE_GPU).context(
-            "GPU mining unavailable: no usable OpenCL GPU runtime. Install your GPU vendor's OpenCL driver and expose the GPU to this process. CPU fallback is disabled.",
-        )?;
-        let device = devices.get(index).context(
-            "GPU mining unavailable: requested OpenCL GPU was not found. Check --gpu-device and the installed GPU driver. CPU fallback is disabled.",
-        )?;
+        let devices = opencl_devices()?;
+        let device = devices.get(index).ok_or_else(|| {
+            gpu_error(
+                "gpu_index_not_found",
+                format!("OpenCL GPU index {index} was not found; detected {} device(s)", devices.len()),
+                "That GPU device index does not exist. Use a valid --gpu-device index. CPU fallback is disabled.",
+            )
+        })?;
+        let opencl_device = Device::new(*device);
+        let name = opencl_device
+            .name()
+            .context("Could not read OpenCL device name")?;
+        let vendor = opencl_device.vendor().unwrap_or_default();
+        let opencl_identity = format!("{vendor} {name}");
+        match classify_opencl_device(&opencl_identity, &system_video_controllers()) {
+            HardwareClass::Dedicated => {}
+            HardwareClass::Integrated => {
+                return Err(gpu_error(
+                    "integrated_graphics",
+                    "OpenCL device classified as integrated graphics",
+                    "💀 SUCKS TO BE YOU, INTEGRATED GRAIFIX USER!\n🐧 Try --cpu instead.",
+                ));
+            }
+            HardwareClass::Uncertain => {
+                return Err(gpu_error(
+                    "gpu_classification_uncertain",
+                    format!("Could not reliably classify OpenCL device '{name}' as dedicated graphics"),
+                    "GPU hardware classification is uncertain. Refusing to start --gpu. Use --cpu or verify your GPU driver and hardware information.",
+                ));
+            }
+        }
         Self::from_device(*device)
     }
 
@@ -158,6 +362,71 @@ impl GpuMiner {
 mod tests {
     use super::*;
     use opencl3::device::CL_DEVICE_TYPE_CPU;
+
+    #[test]
+    fn classifies_dedicated_gpu_from_hardware_metadata() {
+        let info = HardwareInfo {
+            name: "NVIDIA GeForce RTX 4070".into(),
+            vendor: "NVIDIA".into(),
+            dedicated_memory_bytes: Some(12 * 1024 * 1024 * 1024),
+        };
+        assert_eq!(classify_hardware(&info), HardwareClass::Dedicated);
+    }
+
+    #[test]
+    fn classifies_integrated_graphics_from_hardware_metadata() {
+        let info = HardwareInfo {
+            name: "Intel(R) UHD Graphics 770".into(),
+            vendor: "Intel Corporation".into(),
+            dedicated_memory_bytes: Some(128 * 1024 * 1024),
+        };
+        assert_eq!(classify_hardware(&info), HardwareClass::Integrated);
+    }
+
+    #[test]
+    fn refuses_uncertain_hardware_metadata() {
+        let info = HardwareInfo {
+            name: "Generic OpenCL GPU".into(),
+            vendor: "Unknown".into(),
+            dedicated_memory_bytes: None,
+        };
+        assert_eq!(classify_hardware(&info), HardwareClass::Uncertain);
+    }
+
+    #[test]
+    fn distinguishes_no_matching_hardware_record() {
+        assert_eq!(
+            classify_opencl_device(
+                "OpenCL GPU",
+                &[HardwareInfo {
+                    name: "Different GPU".into(),
+                    vendor: "Unknown".into(),
+                    dedicated_memory_bytes: None,
+                }]
+            ),
+            HardwareClass::Uncertain
+        );
+    }
+
+    #[test]
+    fn matches_opencl_name_to_unique_vendor_when_model_names_differ() {
+        let controllers = vec![
+            HardwareInfo {
+                name: "AMD Radeon(TM) Graphics".into(),
+                vendor: "Advanced Micro Devices, Inc.".into(),
+                dedicated_memory_bytes: Some(2 * 1024 * 1024 * 1024),
+            },
+            HardwareInfo {
+                name: "NVIDIA GeForce RTX 5070 Ti".into(),
+                vendor: "NVIDIA".into(),
+                dedicated_memory_bytes: Some(4 * 1024 * 1024 * 1024),
+            },
+        ];
+        assert_eq!(
+            classify_opencl_device("NVIDIA RTX 5070 Ti OpenCL", &controllers),
+            HardwareClass::Dedicated
+        );
+    }
 
     #[test]
     #[ignore = "requires an OpenCL device; see README for explicit GPU/software conformance runs"]

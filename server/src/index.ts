@@ -7,10 +7,16 @@ app.listen({ port, host: process.env.HOST ?? "0.0.0.0" }).catch((e) => {
   app.log.error(e);
   process.exit(1);
 });
+let closing = false;
 const close = async () => {
-  await app.close();
-  db.close();
-  process.exit(0);
+  if (closing) return;
+  closing = true;
+  try {
+    await app.close();
+  } finally {
+    db.close();
+  }
+  process.exitCode = 0;
 };
-process.on("SIGINT", close);
-process.on("SIGTERM", close);
+process.once("SIGINT", () => void close());
+process.once("SIGTERM", () => void close());

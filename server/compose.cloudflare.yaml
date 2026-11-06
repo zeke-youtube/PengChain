@@ -4,6 +4,9 @@ services:
     restart: unless-stopped
     environment:
       CLOUDFLARE_TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in server/.env}
     depends_on:
       pengchain:

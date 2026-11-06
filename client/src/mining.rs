@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MiningJob {
     pub job_id: String,
@@ -69,6 +69,82 @@ pub fn solve(job: &MiningJob, network: &str, cancelled: &AtomicBool) -> Result<O
         }
     }
     bail!("nonce space exhausted")
+}
+
+/// Parallel nonce lanes share only cancellation and counters; no nonce is tested
+/// by two workers. Counters measure actual completed PCA-10 evaluations.
+pub fn solve_parallel(
+    job: &MiningJob,
+    network: &str,
+    cancelled: &AtomicBool,
+    hashes: &std::sync::atomic::AtomicU64,
+    threads: usize,
+    intensity: u8,
+) -> Result<Option<u64>> {
+    use std::sync::{atomic::AtomicU64, Mutex};
+    if threads == 0
+        || threads > std::thread::available_parallelism()?.get()
+        || ![25, 50, 100].contains(&intensity)
+    {
+        bail!("Unsupported CPU mining configuration");
+    }
+    let prefix = canonical_prefix(job, network)?;
+    let expiry = UNIX_EPOCH + Duration::from_millis(job.expires_at);
+    let found = AtomicBool::new(false);
+    let result = Mutex::new(None);
+    std::thread::scope(|scope| {
+        for lane in 0..threads {
+            let prefix = &prefix;
+            let found = &found;
+            let result = &result;
+            let hashes: &AtomicU64 = hashes;
+            scope.spawn(move || {
+                let mut input = prefix.clone();
+                input.extend_from_slice(&[0; 8]);
+                let mut nonce = lane as u64;
+                loop {
+                    let start = std::time::Instant::now();
+                    let mut completed = 0;
+                    for _ in 0..128 {
+                        if cancelled.load(Ordering::Relaxed)
+                            || found.load(Ordering::Relaxed)
+                            || SystemTime::now() >= expiry
+                        {
+                            break;
+                        }
+                        input[prefix.len()..].copy_from_slice(&nonce.to_be_bytes());
+                        let valid = meets_difficulty(&pca10(&input), job.difficulty);
+                        completed += 1;
+                        if valid {
+                            if !found.swap(true, Ordering::Relaxed) {
+                                *result.lock().unwrap() = Some(nonce);
+                            }
+                            break;
+                        }
+                        match nonce.checked_add(threads as u64) {
+                            Some(next) => nonce = next,
+                            None => {
+                                hashes.fetch_add(completed, Ordering::Relaxed);
+                                return;
+                            }
+                        }
+                    }
+                    hashes.fetch_add(completed, Ordering::Relaxed);
+                    if completed == 0 || found.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    if intensity < 100 {
+                        let pause = start
+                            .elapsed()
+                            .mul_f64(100.0 / f64::from(intensity) - 1.0)
+                            .min(Duration::from_millis(20));
+                        std::thread::sleep(pause);
+                    }
+                }
+            });
+        }
+    });
+    Ok(result.into_inner().unwrap())
 }
 
 pub enum Miner {
@@ -172,5 +248,64 @@ mod tests {
         assert!(!meets_difficulty(&digest, 4));
         assert!(!meets_difficulty(&digest, 65));
         assert!(meets_difficulty(&[0; 32], 64));
+    }
+}
+
+#[cfg(test)]
+mod parallel_tests {
+    use super::*;
+    #[test]
+    fn parallel_workers_find_a_real_proof_and_count_work() {
+        let job = MiningJob {
+            job_id: "job".into(),
+            token_id: "PENG".into(),
+            wallet_id: "wallet".into(),
+            challenge: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
+            difficulty: 3,
+            expires_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64
+                + 60_000,
+        };
+        let hashes = std::sync::atomic::AtomicU64::new(0);
+        let threads = std::thread::available_parallelism().unwrap().get().min(2);
+        let nonce = solve_parallel(
+            &job,
+            "pengchain-v1",
+            &AtomicBool::new(false),
+            &hashes,
+            threads,
+            50,
+        )
+        .unwrap()
+        .unwrap();
+        let mut input = canonical_prefix(&job, "pengchain-v1").unwrap();
+        input.extend_from_slice(&nonce.to_be_bytes());
+        assert!(meets_difficulty(&pca10(&input), 3));
+        assert!(hashes.load(Ordering::Relaxed) > 0);
+        let hashes = std::sync::atomic::AtomicU64::new(0);
+        assert_eq!(
+            solve_parallel(
+                &job,
+                "pengchain-v1",
+                &AtomicBool::new(true),
+                &hashes,
+                threads,
+                100
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(hashes.load(Ordering::Relaxed), 0);
+        assert!(solve_parallel(
+            &job,
+            "pengchain-v1",
+            &AtomicBool::new(false),
+            &hashes,
+            0,
+            100
+        )
+        .is_err());
     }
 }

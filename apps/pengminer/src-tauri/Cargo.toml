@@ -1,0 +1,37 @@
+[package]
+name = "pengminer"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+name = "pengminer"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "pengminer"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = ["desktop"]
+custom-protocol = ["tauri/custom-protocol"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-single-instance"]
+
+[build-dependencies]
+tauri-build = { version = "2", optional = true , features = [] }
+
+[dependencies]
+pengwallet = { path = "../../../client" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
+url = "2"
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
+tauri = { version = "2", optional = true, features = ["tray-icon"] }
+tauri-plugin-notification = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

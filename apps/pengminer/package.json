@@ -1,0 +1,38 @@
+{
+  "name": "pengminer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "react": "^19",
+    "react-dom": "^19",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.3",
+    "typescript": "^5.7",
+    "vite": "^6",
+    "vitest": "^3",
+    "eslint": "^9",
+    "typescript-eslint": "^8",
+    "eslint-plugin-react-hooks": "^5.1",
+    "@eslint/js": "^9",
+    "globals": "^15",
+    "@testing-library/react": "^16",
+    "@testing-library/jest-dom": "^6",
+    "jsdom": "^26",
+    "@playwright/test": "^1.50"
+  }
+}

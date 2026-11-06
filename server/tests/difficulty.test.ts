@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   adjustDifficulty,
+  emergencyDifficulty,
   MAX_DIFFICULTY,
   MIN_DIFFICULTY,
 } from "../src/difficulty.js";
@@ -48,5 +49,11 @@ describe("adaptive mining difficulty", () => {
     expect(adjustDifficulty(MIN_DIFFICULTY, timestamps(150)).difficulty).toBe(
       MIN_DIFFICULTY,
     );
+  });
+
+  it("lowers stalled difficulty after one minute", () => {
+    expect(emergencyDifficulty(8, 0, 60_001)).toBe(7);
+    expect(emergencyDifficulty(1, 0, 60_001)).toBe(1);
+    expect(emergencyDifficulty(8, 30_000, 60_000)).toBe(8);
   });
 });

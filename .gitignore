@@ -5,6 +5,7 @@ server/*.sqlite-shm
 server/*.sqlite-wal
 client/target/
 *.log
+server/.env
 
 apps/pengminer/node_modules/
 apps/pengminer/dist/

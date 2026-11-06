@@ -6,10 +6,18 @@ import argon2 from "argon2";
 import { randomBytes, randomInt } from "node:crypto";
 import { z } from "zod";
 import Database from "better-sqlite3";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { audit, id } from "./db.js";
 import { canonicalMiningInput, meetsDifficulty, pca10 } from "./pca10.js";
-import { ADJUSTMENT_WINDOW, adjustDifficulty } from "./difficulty.js";
+import {
+  ADJUSTMENT_WINDOW,
+  adjustDifficulty,
+  emergencyDifficulty,
+} from "./difficulty.js";
 const now = () => Date.now();
+const siteRoot = dirname(fileURLToPath(import.meta.url));
 function nextPengReward(db: Database.Database): number {
   const range = db
     .prepare(
@@ -62,6 +70,21 @@ export function buildApp(db: Database.Database): FastifyInstance {
     const p = Buffer.from(JSON.stringify(x));
     return p.toString("base64url");
   };
+  app.get("/", async (_req, reply) => {
+    reply.type("text/html").send(
+      readFileSync(join(siteRoot, "../public/download.html"), "utf8"),
+    );
+  });
+  app.get("/tokens", async (_req, reply) => {
+    reply.type("text/html").send(
+      readFileSync(join(siteRoot, "../public/tokens.html"), "utf8"),
+    );
+  });
+  app.get("/logs", async (_req, reply) => {
+    reply.type("text/html").send(
+      readFileSync(join(siteRoot, "../public/logs.html"), "utf8"),
+    );
+  });
   app.get("/health", async () => ({ ok: true }));
   app.post("/blockchain/api/wallet/create", async (req: any, reply) => {
     const p = walletSchema.safeParse(req.body);
@@ -320,6 +343,25 @@ export function buildApp(db: Database.Database): FastifyInstance {
         .get(symbol) as any;
       if (!t || !t.mineable)
         return reply.code(400).send({ error: "mineable token not found" });
+      const lastAccepted = db
+        .prepare("SELECT MAX(accepted_at) acceptedAt FROM mining_solutions WHERE token_id=?")
+        .get(t.id) as { acceptedAt: number | null };
+      const emergency = emergencyDifficulty(t.difficulty, lastAccepted.acceptedAt, now());
+      if (emergency < t.difficulty) {
+        const previousAdjustment = db
+          .prepare("SELECT 1 FROM audit_log WHERE event_type='mining.difficulty_emergency' AND payload LIKE ? AND created_at > COALESCE(?, 0) LIMIT 1")
+          .get(`%\"tokenId\":\"${t.id}\"%`, lastAccepted.acceptedAt);
+        if (!previousAdjustment) {
+          db.prepare("UPDATE tokens SET difficulty=? WHERE id=?").run(emergency, t.id);
+          t.difficulty = emergency;
+          audit(db, "mining.difficulty_emergency", {
+            tokenId: t.id,
+            previousDifficulty: emergency + 1,
+            newDifficulty: emergency,
+            reason: "no accepted solution for 60 seconds",
+          });
+        }
+      }
       const reward = t.symbol === "PENG" ? nextPengReward(db) : 1;
       const jobId = id(),
         challenge = randomBytes(32),

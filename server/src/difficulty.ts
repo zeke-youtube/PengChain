@@ -3,12 +3,27 @@ export const MAX_DIFFICULTY = 64;
 export const ADJUSTMENT_WINDOW = 10;
 export const FAST_INTERVAL_SECONDS = 30;
 export const SLOW_INTERVAL_SECONDS = 120;
+export const STALL_INTERVAL_SECONDS = 60;
 
 export type DifficultyAdjustment = {
   difficulty: number;
   averageIntervalSeconds: number;
   direction: "increase" | "decrease" | "unchanged";
 };
+
+export function emergencyDifficulty(
+  currentDifficulty: number,
+  lastAcceptedAt: number | null,
+  currentTime: number,
+): number {
+  if (
+    lastAcceptedAt !== null &&
+    currentTime - lastAcceptedAt < STALL_INTERVAL_SECONDS * 1000
+  ) {
+    return currentDifficulty;
+  }
+  return Math.max(MIN_DIFFICULTY, currentDifficulty - 1);
+}
 
 export function adjustDifficulty(
   currentDifficulty: number,

@@ -41,6 +41,7 @@ import {
 import type { Gpu, MiningEvent, Settings, Snapshot } from "./types";
 
 const defaults: Settings = {
+  enginePath: "",
   server: "http://127.0.0.1:3000",
   token: "PENG",
   network: "pengchain-v1",
@@ -222,17 +223,6 @@ export default function App() {
       void command<Snapshot>("snapshot").then((s) => {
         if (!disposed) apply(s);
       });
-      void command<{ gpus: Gpu[]; warning: string | null }>("devices")
-        .then((data) => {
-          if (!disposed) {
-            setGpus(data.gpus);
-            setGpuWarning(data.warning);
-          }
-        })
-        .catch(() => {
-          if (!disposed)
-            setGpuWarning("Device discovery failed. Check the OpenCL driver.");
-        });
     }
     const poll = setInterval(() => {
       if (desktop)
@@ -257,6 +247,27 @@ export default function App() {
       clearInterval(network);
     };
   }, [apply]);
+  const enginePath = state?.settings.enginePath ?? "";
+  useEffect(() => {
+    let disposed = false;
+    if (desktop)
+      void command<{ gpus: Gpu[]; warning: string | null }>("devices")
+        .then((data) => {
+          if (!disposed) {
+            setGpus(data.gpus);
+            setGpuWarning(data.warning);
+          }
+        })
+        .catch(() => {
+          if (!disposed)
+            setGpuWarning(
+              "Could not inspect the PengWallet CLI. Check the engine path in Settings.",
+            );
+        });
+    return () => {
+      disposed = true;
+    };
+  }, [enginePath]);
   const act = async (name: string, args?: Record<string, unknown>) => {
     setBusy(true);
     setError(null);
@@ -880,6 +891,19 @@ export default function App() {
               <p>
                 Stop mining before changing connection or hardware settings.
               </p>
+              <label>
+                PengWallet CLI executable (optional override)
+                <input
+                  value={draft.enginePath}
+                  disabled={disabled || running}
+                  placeholder="Use the included pengwallet.exe"
+                  onChange={(e) => update("enginePath", e.target.value)}
+                />
+                <span className="small muted">
+                  Leave blank to use the separately bundled CLI. An override
+                  must be an absolute path to a trusted PengWallet executable.
+                </span>
+              </label>
               <div className="two-col">
                 <label>
                   PengChain server URL

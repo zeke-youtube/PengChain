@@ -1,4 +1,5 @@
 use pengwallet::mining;
+mod engine;
 mod ui;
 
 use anyhow::{bail, Context, Result};
@@ -35,6 +36,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Versioned JSON-lines engine for PengMiner (stdin/stdout; no credential files)
+    Engine,
     /// Create a wallet and sign in; prompts for a password when omitted
     Create { password: Option<String> },
     /// Sign in and save your session for later commands
@@ -141,6 +144,7 @@ async fn run(cli: Cli) -> Result<()> {
     let base = cli.server.trim_end_matches('/');
     let endpoint = |path: &str| format!("{base}{path}");
     match cli.command {
+        Command::Engine => return engine::run().await,
         Command::Create { password } => {
             let password = match password {
                 Some(value) => value,

@@ -3,17 +3,16 @@ use crate::{
     storage::{Files, SessionStore, Settings},
 };
 use anyhow::{bail, Context, Result};
-use pengwallet::{
-    gpu::{self, GpuInfo, GpuMiner},
-    mining::{self, MiningJob},
+use pengwallet_protocol::{
+    Device as GpuInfo, Event as CliEvent, Job as MiningJob, Request, VERSION,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{
     sync::{Mutex as AsyncMutex, Notify},
@@ -92,33 +91,12 @@ impl Cancellation {
         self.notify.notify_one();
     }
 }
-struct StopWorker(Arc<Cancellation>);
-impl Drop for StopWorker {
-    fn drop(&mut self) {
-        self.0.cancel();
-    }
-}
 struct Task {
     cancel: Arc<Cancellation>,
     handle: JoinHandle<()>,
 }
 
-struct ActiveWorker(Arc<AtomicUsize>);
-impl ActiveWorker {
-    fn new(count: &Arc<AtomicUsize>) -> Self {
-        count.fetch_add(1, Ordering::SeqCst);
-        Self(Arc::clone(count))
-    }
-}
-impl Drop for ActiveWorker {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
 pub struct Engine {
-    hashes: Arc<AtomicU64>,
-    workers: Arc<AtomicUsize>,
     state: Mutex<State>,
     commands: AsyncMutex<()>,
     task: AsyncMutex<Option<Task>>,
@@ -156,8 +134,6 @@ impl Engine {
     ) -> Result<Arc<Self>> {
         let settings = files.settings()?;
         Ok(Arc::new(Self {
-            hashes: Arc::new(AtomicU64::new(0)),
-            workers: Arc::new(AtomicUsize::new(0)),
             state: Mutex::new(State {
                 session: None,
                 snapshot: Snapshot {
@@ -391,10 +367,10 @@ impl Engine {
             }
         }
     }
-    pub async fn devices() -> Result<(Vec<GpuInfo>, Option<String>)> {
-        match tokio::task::spawn_blocking(gpu::enumerate).await? {
-            Ok(devices)=>Ok((devices,None)),
-            Err(_)=>Ok((vec![],Some("OpenCL is unavailable. Install a supported vendor driver to enable GPU mining.".into()))),
+    pub async fn devices(&self) -> Result<(Vec<GpuInfo>, Option<String>)> {
+        match crate::process::inspect(&self.snapshot().settings.engine_path).await {
+            Ok((_, devices, warning)) => Ok((devices, warning)),
+            Err(error) => Ok((vec![], Some(public_error(&error)))),
         }
     }
     pub async fn start(self: &Arc<Self>) -> Result<Snapshot> {
@@ -414,16 +390,22 @@ impl Engine {
             .context("Sign in before starting mining")?;
         let api = Api::new(&settings.server)?;
         api.balances(&session).await?;
+        let (_, devices, _) = crate::process::inspect(&settings.engine_path).await?;
         let gpu = if settings.device == "cpu" {
             None
         } else {
-            let selected = if settings.device == "gpu:auto" {
-                None
-            } else {
-                Some(settings.device.clone())
-            };
-            let devices = tokio::task::spawn_blocking(gpu::enumerate).await??;
-            Some(gpu::preferred_device(&devices, selected.as_deref())?)
+            pengwallet_protocol::preferred_gpu(
+                &devices,
+                if settings.device == "gpu:auto" {
+                    None
+                } else {
+                    Some(&settings.device)
+                },
+            )
+            .map(Some)
+            .context(
+                "No supported GPU selected. Choose an available device; CPU fallback is disabled.",
+            )?
         };
         {
             let mut state = self.state.lock().unwrap();
@@ -441,7 +423,6 @@ impl Engine {
             snapshot.job = None;
             snapshot.difficulty = None;
         }
-        self.hashes.store(0, Ordering::Relaxed);
         let cancel = Arc::new(Cancellation::new());
         let child = Arc::clone(&cancel);
         let engine = Arc::clone(self);
@@ -450,8 +431,8 @@ impl Engine {
         });
         *self.task.lock().await = Some(Task { cancel, handle });
         self.emit(
-            "mining_started",
-            Some("Mining started. Rewards are counted only after server acceptance."),
+            "engine_starting",
+            Some("Starting the PengWallet CLI mining process."),
         );
         Ok(self.snapshot())
     }
@@ -468,15 +449,6 @@ impl Engine {
                 .await
                 .context("Mining worker stopped unexpectedly")?;
         }
-        while self.workers.load(Ordering::SeqCst) > 0 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        {
-            let mut state = self.state.lock().unwrap();
-            state.snapshot.hashes = self.hashes.load(Ordering::Relaxed);
-            state.snapshot.average_hashrate =
-                state.snapshot.hashes as f64 / state.snapshot.uptime.max(0.001);
-        }
         Ok(())
     }
     async fn run(
@@ -487,172 +459,151 @@ impl Engine {
         gpu: Option<usize>,
         cancel: Arc<Cancellation>,
     ) {
-        let hashes = Arc::clone(&self.hashes);
-        let started = Instant::now();
-        let guard = StopWorker(Arc::clone(&cancel));
-        let result = {
-            let work = self.mine(
-                api,
-                session,
-                settings,
-                gpu,
-                Arc::clone(&cancel),
-                Arc::clone(&hashes),
-            );
-            tokio::pin!(work);
-            let mut interval = tokio::time::interval(Duration::from_millis(500));
-            let mut last = Instant::now();
-            let mut previous = 0;
-            loop {
-                tokio::select! {
-                    biased;
-                    _=cancel.notify.notified()=>break Ok(()),
-                    result=&mut work=>break result,
-                    _=interval.tick()=> {
-                        let count=hashes.load(Ordering::Relaxed);let elapsed=last.elapsed().as_secs_f64();
-                        {let mut state=self.state.lock().unwrap();let snapshot=&mut state.snapshot;
-                         snapshot.hashes=count;snapshot.uptime=started.elapsed().as_secs_f64();
-                         snapshot.current_hashrate=(count-previous) as f64 / elapsed.max(0.001);
-                         snapshot.average_hashrate=count as f64 / snapshot.uptime.max(0.001);}
-                        last=Instant::now();previous=count;self.emit("hashrate_updated",None);
-                    }
-                }
-            }
+        let request = Request::Mine {
+            version: VERSION,
+            server: settings.server.clone(),
+            wallet_id: session.wallet_id.clone(),
+            cookie: session.cookie.clone(),
+            token: settings.token.clone(),
+            network: settings.network.clone(),
+            gpu: gpu.is_some(),
+            gpu_device: gpu,
+            threads: settings.cpu_threads,
+            intensity: settings.intensity,
         };
-        drop(guard);
+        let mut accepted = std::collections::HashSet::new();
+        let result = crate::process::mine(
+            &settings.engine_path,
+            request,
+            &cancel.notify,
+            cancel.flag.load(Ordering::Relaxed),
+            |event| self.cli_event(&api, &session, &settings, event, &mut accepted),
+        )
+        .await;
         {
             let mut state = self.state.lock().unwrap();
-            let snapshot = &mut state.snapshot;
-            snapshot.running = false;
-            snapshot.current_hashrate = 0.0;
-            snapshot.hashes = hashes.load(Ordering::Relaxed);
-            snapshot.uptime = started.elapsed().as_secs_f64();
-            snapshot.average_hashrate = snapshot.hashes as f64 / snapshot.uptime.max(0.001);
-            snapshot.job = None;
-            if let Err(ref error) = result {
-                snapshot.error = Some(public_error(error));
-            }
+            state.snapshot.running = false;
+            state.snapshot.current_hashrate = 0.0;
+            state.snapshot.job = None;
         }
         if let Err(error) = result {
             let message = public_error(&error);
-            if error.downcast_ref::<reqwest::Error>().is_some() {
-                self.state.lock().unwrap().snapshot.connected = false;
-                self.emit("network_disconnected",Some("Network disconnected. Mining stopped; no submission will be retried automatically."));
+            let reported = {
+                let mut state = self.state.lock().unwrap();
+                let reported = state.snapshot.error.is_some();
+                if !reported {
+                    state.snapshot.error = Some(message.clone());
+                }
+                reported
+            };
+            if !reported {
+                self.emit("mining_error", Some(&message));
             }
-            self.emit("mining_error", Some(&message));
         }
         self.emit(
             "mining_stopped",
-            Some(
-                "Mining stopped. Any in-flight submission can be checked using the wallet balance.",
-            ),
+            Some("PengWallet engine stopped. The server balance is authoritative."),
         );
     }
-    async fn mine(
-        &self,
-        api: Api,
-        session: Session,
-        settings: Settings,
-        index: Option<usize>,
-        cancel: Arc<Cancellation>,
-        hashes: Arc<AtomicU64>,
+    fn cli_event(
+        self: &Arc<Self>,
+        api: &Api,
+        session: &Session,
+        settings: &Settings,
+        event: CliEvent,
+        accepted: &mut std::collections::HashSet<String>,
     ) -> Result<()> {
-        let mut gpu = if let Some(index) = index {
-            Some({
-                let active = ActiveWorker::new(&self.workers);
-                tokio::task::spawn_blocking(move || {
-                    let _active = active;
-                    GpuMiner::new(index)
-                })
-                .await??
-            })
-        } else {
-            None
-        };
-        self.state.lock().unwrap().snapshot.device_name = gpu
-            .as_ref()
-            .map(|g| g.name().to_owned())
-            .unwrap_or_else(|| format!("CPU · {} thread(s)", settings.cpu_threads));
-        loop {
-            if cancel.flag.load(Ordering::Relaxed) {
-                return Ok(());
+        match event {
+            CliEvent::Ready { cpu_count, .. } => {
+                self.state.lock().unwrap().snapshot.cpu_count = cpu_count;
             }
-            let job = api.job(&session, &settings.token).await?;
-            {
-                let mut state = self.state.lock().unwrap();
-                state.snapshot.difficulty = Some(job.difficulty);
-                state.snapshot.job = Some(job.clone());
+            CliEvent::Started { device_name } => {
+                self.state.lock().unwrap().snapshot.device_name = device_name;
+                self.emit(
+                    "mining_started",
+                    Some("PengWallet CLI mining engine started."),
+                );
             }
-            self.emit("mining_job_received", Some("Fresh mining job received."));
-            let child = Arc::clone(&cancel);
-            let counter = Arc::clone(&hashes);
-            let network = settings.network.clone();
-            let threads = settings.cpu_threads;
-            let intensity = settings.intensity;
-            let id = job.job_id.clone();
-            let active = ActiveWorker::new(&self.workers);
-            let (returned, result) = tokio::task::spawn_blocking(move || {
-                let _active = active;
-                let result = match &gpu {
-                    Some(gpu) => {
-                        gpu.solve_with_progress(&job, &network, &child.flag, &counter, intensity)
+            CliEvent::JobReceived { job } => {
+                if job.wallet_id != session.wallet_id {
+                    bail!("PengWallet reported a job for a different wallet");
+                }
+                {
+                    let mut state = self.state.lock().unwrap();
+                    state.snapshot.difficulty = Some(job.difficulty);
+                    state.snapshot.job = Some(job);
+                }
+                self.emit(
+                    "mining_job_received",
+                    Some("PengWallet received a fresh mining job."),
+                );
+            }
+            CliEvent::Hashrate {
+                hashes,
+                elapsed,
+                current,
+                average,
+            } => {
+                if ![elapsed, current, average]
+                    .iter()
+                    .all(|value| value.is_finite() && *value >= 0.0)
+                {
+                    bail!("PengWallet reported invalid telemetry");
+                }
+                {
+                    let mut state = self.state.lock().unwrap();
+                    let snapshot = &mut state.snapshot;
+                    if hashes < snapshot.hashes || elapsed < snapshot.uptime {
+                        bail!("PengWallet telemetry moved backwards");
                     }
-                    None => mining::solve_parallel(
-                        &job,
-                        &network,
-                        &child.flag,
-                        &counter,
-                        threads,
-                        intensity,
-                    ),
-                };
-                (gpu, result)
-            })
-            .await?;
-            gpu = returned;
-            if let Some(nonce) = result? {
-                if cancel.flag.load(Ordering::Relaxed) {
-                    return Ok(());
+                    snapshot.hashes = hashes;
+                    snapshot.uptime = elapsed;
+                    snapshot.current_hashrate = current;
+                    snapshot.average_hashrate = average;
+                }
+                self.emit("hashrate_updated", None);
+            }
+            CliEvent::SolutionFound { job_id, nonce } => {
+                if self.snapshot().job.as_ref().map(|job| &job.job_id) != Some(&job_id)
+                    || nonce.parse::<u64>().is_err()
+                {
+                    bail!("PengWallet reported an invalid solution event");
                 }
                 self.emit(
                     "solution_found",
-                    Some("Proof found. Awaiting server verification."),
+                    Some("PengWallet found a proof. Awaiting server verification."),
                 );
-                // Exactly one submit per job. A lost response is not retried.
-                let response = api.submit(&session, &id, nonce).await;
-                let receipt = match response {
-                    Ok(receipt) if receipt.accepted => receipt,
-                    Ok(_) => {
-                        self.reject(&session, &settings.token, &id, nonce);
-                        bail!("Server rejected the solution");
-                    }
-                    Err(error) => {
-                        if error
-                            .downcast_ref::<ApiError>()
-                            .is_some_and(|e| e.status == 400)
-                        {
-                            self.reject(&session, &settings.token, &id, nonce);
-                        }
-                        return Err(error);
-                    }
-                };
+            }
+            CliEvent::RewardAccepted {
+                job_id,
+                nonce,
+                token,
+                reward,
+                ..
+            } => {
+                if token != settings.token
+                    || self.snapshot().job.as_ref().map(|job| &job.job_id) != Some(&job_id)
+                    || !accepted.insert(job_id.clone())
+                {
+                    bail!("PengWallet reported a duplicate or mismatched reward receipt");
+                }
                 let history = {
                     let mut state = self.state.lock().unwrap();
                     let snapshot = &mut state.snapshot;
                     snapshot.accepted += 1;
                     snapshot.earnings = snapshot
                         .earnings
-                        .checked_add(receipt.reward)
+                        .checked_add(reward)
                         .context("Earnings overflow")?;
                     snapshot.history.push(Solution {
                         time: now(),
                         server: session.server.clone(),
                         wallet_id: session.wallet_id.clone(),
-                        token: settings.token.clone(),
-                        job_id: id,
-                        nonce: nonce.to_string(),
+                        token,
+                        job_id,
+                        nonce,
                         accepted: true,
-                        reward: receipt.reward,
+                        reward,
                     });
                     if snapshot.history.len() > 200 {
                         snapshot.history.remove(0);
@@ -672,17 +623,60 @@ impl Engine {
                     saved.drain(..saved.len() - 1000);
                 }
                 if self.files.write("rewards.json", &saved).is_err() {
-                    self.emit("storage_error",Some("Reward accepted, but local history could not be saved. Server balance remains authoritative."));
+                    self.emit(
+                        "storage_error",
+                        Some("Reward accepted, but local history could not be saved."),
+                    );
                 }
                 self.emit(
                     "reward_accepted",
-                    Some("Verified reward accepted by the server."),
+                    Some("PengWallet reported a server-accepted reward."),
                 );
-                let balances = api.balances(&session).await?;
-                self.state.lock().unwrap().snapshot.balances = balances;
+                let engine = Arc::clone(self);
+                let api = api.clone();
+                let session = session.clone();
+                tokio::spawn(async move {
+                    if let Ok(balances) = api.balances(&session).await {
+                        let mut state = engine.state.lock().unwrap();
+                        if state.snapshot.wallet_id.as_deref() == Some(&session.wallet_id)
+                            && state.snapshot.settings.server == session.server
+                        {
+                            state.snapshot.balances = balances;
+                        }
+                    }
+                });
             }
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            CliEvent::SubmissionRejected { job_id, nonce, .. } => {
+                self.reject(
+                    session,
+                    &settings.token,
+                    &job_id,
+                    nonce.parse().context("Invalid rejected nonce")?,
+                );
+            }
+            CliEvent::NetworkDisconnected { .. } => {
+                self.state.lock().unwrap().snapshot.connected = false;
+                self.emit(
+                    "network_disconnected",
+                    Some("PengWallet lost its connection to PengChain."),
+                );
+            }
+            CliEvent::Error { message } => {
+                self.state.lock().unwrap().snapshot.error = Some(message.clone());
+                self.emit("mining_error", Some(&message));
+            }
+            CliEvent::Stopped { hashes, elapsed } => {
+                if !elapsed.is_finite() || elapsed < 0.0 {
+                    bail!("Invalid engine stop summary");
+                }
+                let mut state = self.state.lock().unwrap();
+                state.snapshot.hashes = hashes;
+                state.snapshot.uptime = elapsed;
+                state.snapshot.current_hashrate = 0.0;
+                state.snapshot.average_hashrate = hashes as f64 / elapsed.max(0.001);
+            }
         }
+        Ok(())
     }
     fn reject(&self, session: &Session, token: &str, job: &str, nonce: u64) {
         {

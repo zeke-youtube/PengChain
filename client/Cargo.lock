@@ -1130,11 +1130,19 @@ dependencies = [
  "dialoguer",
  "dirs",
  "opencl3",
+ "pengwallet-protocol",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
  "tokio",
+]
+
+[[package]]
+name = "pengwallet-protocol"
+version = "1.0.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

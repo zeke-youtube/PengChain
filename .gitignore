@@ -12,3 +12,6 @@ apps/pengminer/src-tauri/target/
 apps/pengminer/src-tauri/gen/
 apps/pengminer/test-results/
 apps/pengminer/playwright-report/
+
+apps/pengminer/src-tauri/binaries/
+crates/pengwallet-protocol/target/

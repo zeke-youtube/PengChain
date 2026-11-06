@@ -52,12 +52,13 @@ async fn save_settings(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Devices {
-    gpus: Vec<pengwallet::gpu::GpuInfo>,
+    gpus: Vec<pengwallet_protocol::Device>,
     warning: Option<String>,
 }
 #[tauri::command]
-async fn devices() -> Result<Devices, String> {
-    Engine::devices()
+async fn devices(engine: tauri::State<'_, Arc<Engine>>) -> Result<Devices, String> {
+    engine
+        .devices()
         .await
         .map(|(gpus, warning)| Devices { gpus, warning })
         .map_err(failure)

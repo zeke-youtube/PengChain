@@ -1,5 +1,4 @@
-mod gpu;
-mod mining;
+use pengwallet::{gpu, mining};
 mod ui;
 
 use anyhow::{bail, Context, Result};

@@ -5,3 +5,10 @@ server/*.sqlite-shm
 server/*.sqlite-wal
 client/target/
 *.log
+
+apps/pengminer/node_modules/
+apps/pengminer/dist/
+apps/pengminer/src-tauri/target/
+apps/pengminer/src-tauri/gen/
+apps/pengminer/test-results/
+apps/pengminer/playwright-report/

@@ -20,6 +20,54 @@ use std::{
 const SOURCE: &str = include_str!("kernels/pca10.cl");
 const BATCH_SIZE: usize = 16_384;
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuInfo {
+    pub id: String,
+    pub index: usize,
+    pub name: String,
+    pub vendor: String,
+    pub device_type: String,
+    pub memory_bytes: u64,
+    pub integrated: bool,
+    pub available: bool,
+}
+
+pub fn enumerate() -> Result<Vec<GpuInfo>> {
+    get_all_devices(CL_DEVICE_TYPE_GPU)?
+        .iter()
+        .enumerate()
+        .map(|(index, id)| {
+            let device = Device::new(*id);
+            Ok(GpuInfo {
+                id: format!("opencl:{index}"),
+                index,
+                name: device.name()?,
+                vendor: device.vendor()?,
+                device_type: "GPU".into(),
+                memory_bytes: device.global_mem_size()?,
+                integrated: device.host_unified_memory()?,
+                available: device.available()? && device.compiler_available()?,
+            })
+        })
+        .collect()
+}
+
+pub fn preferred_device(devices: &[GpuInfo], selected: Option<&str>) -> Result<usize> {
+    let device = if let Some(id) = selected {
+        devices
+            .iter()
+            .find(|device| device.id == id && device.available)
+    } else {
+        devices
+            .iter()
+            .find(|device| !device.integrated && device.available)
+    };
+    device.map(|device| device.index).context(
+        "No supported GPU selected. Select an available GPU explicitly; CPU fallback is disabled.",
+    )
+}
+
 pub struct GpuMiner {
     kernel: Kernel,
     // OpenCL wrappers retain their dependencies; these fields also keep them
@@ -71,6 +119,31 @@ impl GpuMiner {
         network: &str,
         cancelled: &AtomicBool,
     ) -> Result<Option<u64>> {
+        self.solve_with_progress(
+            job,
+            network,
+            cancelled,
+            &std::sync::atomic::AtomicU64::new(0),
+            100,
+        )
+    }
+
+    pub fn solve_with_progress(
+        &self,
+        job: &MiningJob,
+        network: &str,
+        cancelled: &AtomicBool,
+        hashes: &std::sync::atomic::AtomicU64,
+        intensity: u8,
+    ) -> Result<Option<u64>> {
+        if ![25, 50, 100].contains(&intensity) {
+            bail!("Unsupported GPU intensity");
+        }
+        let batch_size = match intensity {
+            25 => 1024,
+            50 => 4096,
+            _ => BATCH_SIZE,
+        };
         let prefix = canonical_prefix(job, network)?;
         let expiry = UNIX_EPOCH + Duration::from_millis(job.expires_at);
         let mut base = 0u64;
@@ -78,8 +151,9 @@ impl GpuMiner {
             if cancelled.load(Ordering::Relaxed) || SystemTime::now() >= expiry {
                 return Ok(None);
             }
-            let count = (u64::MAX - base).min((BATCH_SIZE - 1) as u64) as usize + 1;
+            let count = (u64::MAX - base).min((batch_size - 1) as u64) as usize + 1;
             let found = self.search_batch(&prefix, job.difficulty, base, count)?;
+            hashes.fetch_add(count as u64, Ordering::Relaxed);
             if cancelled.load(Ordering::Relaxed) || SystemTime::now() >= expiry {
                 return Ok(None);
             }
@@ -92,6 +166,9 @@ impl GpuMiner {
                     bail!("GPU returned an invalid proof of work; submission was stopped");
                 }
                 return Ok(Some(nonce));
+            }
+            if intensity < 100 {
+                std::thread::sleep(Duration::from_millis(if intensity == 25 { 20 } else { 10 }));
             }
             match base.checked_add(count as u64) {
                 Some(next) => base = next,
@@ -258,6 +335,20 @@ mod tests {
             miner.solve(&job, "pengchain-v1", &AtomicBool::new(true))?,
             None
         );
+        let hashes = std::sync::atomic::AtomicU64::new(0);
+        assert_eq!(
+            miner.solve_with_progress(
+                &job,
+                "pengchain-v1",
+                &AtomicBool::new(false),
+                &hashes,
+                25
+            )?,
+            Some(6306)
+        );
+        assert!(hashes.load(Ordering::Relaxed) >= 6307);
+        assert_eq!(hashes.load(Ordering::Relaxed) % 1024, 0);
+
         let expired = MiningJob {
             expires_at: 0,
             ..job

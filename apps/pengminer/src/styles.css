@@ -402,7 +402,7 @@ h2 {
 }
 .chart-grid {
   position: absolute;
-  inset: 0 0 30px;
+  inset: 0 0 30px 34px;
   background: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -412,10 +412,21 @@ h2 {
   );
   opacity: 0.5;
 }
+.chart-scale {
+  position: absolute;
+  inset: 0 auto 30px 0;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: right;
+}
 .chart-axis {
   position: absolute;
   bottom: 0;
-  left: 0;
+  left: 34px;
   right: 0;
   display: flex;
   justify-content: space-between;

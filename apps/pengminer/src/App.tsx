@@ -66,7 +66,7 @@ const number = (value: number | undefined) =>
 const time = (value: number) => new Date(value).toLocaleTimeString();
 
 function Chart({ samples }: { samples: Sample[] }) {
-  const max = Math.max(1, ...samples.map((sample) => sample.rate));
+  const max = Math.max(1, ...samples.map((sample) => sample.rate)) * 1.15;
   const first = samples[0]?.time ?? 0;
   const span = (samples.at(-1)?.time ?? first) - first;
   const points = samples
@@ -75,9 +75,18 @@ function Chart({ samples }: { samples: Sample[] }) {
         `${((sample.time - first) / Math.max(0.001, span)) * 900},${160 - (sample.rate / max) * 140}`,
     )
     .join(" ");
+  const latest = samples.at(-1);
+  const latestPoint = latest
+    ? `${((latest.time - first) / Math.max(0.001, span)) * 900},${160 - (latest.rate / max) * 140}`
+    : "";
   return (
     <div className="chart" aria-label="Live measured hashrate chart">
       <div className="chart-grid" />
+      <div className="chart-scale" aria-hidden="true">
+        <span>{hashrate(max)}</span>
+        <span>{hashrate(max / 2)}</span>
+        <span>0 H/s</span>
+      </div>
       {samples.length > 1 ? (
         <svg
           viewBox="0 0 900 180"
@@ -98,6 +107,14 @@ function Chart({ samples }: { samples: Sample[] }) {
             stroke="#45e7a0"
             strokeWidth="2.5"
             vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            cx={latestPoint.split(",")[0]}
+            cy={latestPoint.split(",")[1]}
+            r="4"
+            fill="#45e7a0"
+            stroke="var(--panel)"
+            strokeWidth="2"
           />
         </svg>
       ) : (

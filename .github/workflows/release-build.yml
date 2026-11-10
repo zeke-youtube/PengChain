@@ -1,0 +1,126 @@
+name: Publish verified build
+
+on:
+  push:
+    branches: [fix/ci-and-android-miner]
+    paths: [.github/workflows/release-build.yml]
+  workflow_dispatch:
+    inputs:
+      windows_run:
+        description: Successful Windows workflow run ID
+        default: '42748258565'
+        required: true
+      android_run:
+        description: Successful Android workflow run ID
+        default: '42748258225'
+        required: true
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-verified-build
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      WINDOWS_RUN: ${{ inputs.windows_run || '42748258565' }}
+      ANDROID_RUN: ${{ inputs.android_run || '42748258225' }}
+    steps:
+      - name: Verify source builds
+        id: builds
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ids = [process.env.WINDOWS_RUN, process.env.ANDROID_RUN];
+            if (!ids.every(id => /^[0-9]+$/.test(id))) throw new Error('Invalid run ID');
+            const runs = [];
+            for (const id of ids) {
+              const {data: run} = await github.rest.actions.getWorkflowRun({
+                ...context.repo, run_id: Number(id)
+              });
+              if (run.status !== 'completed' || run.conclusion !== 'success') {
+                throw new Error(`Build ${id} did not pass`);
+              }
+              if (run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+                throw new Error('Build belongs to another repository');
+              }
+              runs.push(run);
+            }
+            if (runs[0].path !== '.github/workflows/pengminer-windows.yml' ||
+                runs[1].path !== '.github/workflows/pengminer-android.yml') {
+              throw new Error('Unexpected source workflow');
+            }
+            if (runs[0].head_sha !== runs[1].head_sha) throw new Error('Build commits differ');
+            core.setOutput('sha', runs[0].head_sha);
+            core.setOutput('tag', `build-${ids[0]}`);
+      - uses: actions/download-artifact@v4
+        with:
+          name: PengMiner-Windows-NSIS
+          path: windows
+          run-id: ${{ env.WINDOWS_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: PengMiner-Android-debug
+          path: android
+          run-id: ${{ env.ANDROID_RUN }}
+          github-token: ${{ github.token }}
+      - name: Attach artifacts and publish release
+        uses: actions/github-script@v7
+        env:
+          SOURCE_SHA: ${{ steps.builds.outputs.sha }}
+          RELEASE_TAG: ${{ steps.builds.outputs.tag }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const crypto = require('node:crypto');
+            const path = require('node:path');
+            const files = [
+              ['android/app-debug.apk', 'PengMiner-Android-debug.apk'],
+              ['windows/PengMiner_1.0.0_x64-setup.exe', 'PengMiner_1.0.0_x64-setup.exe']
+            ].map(([source, name]) => ({name, data: fs.readFileSync(source)}));
+            if (files[0].data.length < 4 || files[0].data.toString('hex', 0, 2) !== '504b' ||
+                files[1].data.toString('ascii', 0, 2) !== 'MZ') throw new Error('Invalid build artifacts');
+            const checksums = files.map(file =>
+              `${crypto.createHash('sha256').update(file.data).digest('hex')}  ${file.name}\n`
+            ).join('');
+            files.push({name: 'SHA256SUMS.txt', data: Buffer.from(checksums)});
+            const tag = process.env.RELEASE_TAG;
+            const sha = process.env.SOURCE_SHA;
+            const releases = await github.paginate(github.rest.repos.listReleases, context.repo);
+            let release = releases.find(item => item.tag_name === tag);
+            if (release && release.target_commitish !== sha) throw new Error('Release source differs');
+            if (release && !release.draft) throw new Error('Release is already published');
+            const body = `PENG miner build from commit \`${sha}\`.\n\n` +
+              `Downloads: Android 8+ CPU miner APK, Windows x64 NSIS installer, and SHA-256 checksums.\n\n` +
+              `Both source workflows passed. [Windows build](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.WINDOWS_RUN}) · ` +
+              `[Android build](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.ANDROID_RUN}).\n\n` +
+              `The Android APK is debug-signed for sideloading. Production release signing is not configured. Physical Android performance/thermal behavior and interactive Windows installer operation remain unverified.`;
+            if (!release) {
+              ({data: release} = await github.rest.repos.createRelease({
+                ...context.repo, tag_name: tag, target_commitish: sha, name: tag, body, draft: true
+              }));
+            }
+            for (const file of files) {
+              const existing = release.assets.find(asset => asset.name === file.name);
+              if (existing) await github.rest.repos.deleteReleaseAsset({...context.repo, asset_id: existing.id});
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo, release_id: release.id, name: file.name, data: file.data,
+                headers: {'content-type': 'application/octet-stream', 'content-length': file.data.length}
+              });
+            }
+            const {data: assets} = await github.rest.repos.listReleaseAssets({...context.repo, release_id: release.id});
+            for (const file of files) {
+              if (!assets.some(asset => asset.name === file.name && asset.size === file.data.length && asset.state === 'uploaded')) {
+                throw new Error(`Asset not uploaded: ${file.name}`);
+              }
+            }
+            const {data: published} = await github.rest.repos.updateRelease({
+              ...context.repo, release_id: release.id, name: tag, body, draft: false, make_latest: 'true'
+            });
+            core.summary.addLink('Published release', published.html_url);
+            await core.summary.write();

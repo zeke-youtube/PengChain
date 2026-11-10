@@ -16,3 +16,7 @@ apps/pengminer/playwright-report/
 
 apps/pengminer/src-tauri/binaries/
 crates/pengwallet-protocol/target/
+
+apps/pengminer-android/.gradle/
+apps/pengminer-android/**/build/
+apps/pengminer-android/local.properties

@@ -1,0 +1,51 @@
+name: PengMiner Android
+
+on:
+  push:
+    paths:
+      - 'apps/pengminer-android/**'
+      - 'server/**'
+      - '.github/workflows/pengminer-android.yml'
+  pull_request:
+    paths:
+      - 'apps/pengminer-android/**'
+      - 'server/**'
+      - '.github/workflows/pengminer-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;34.0.0
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test, lint, and build APK
+        working-directory: apps/pengminer-android
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Build and test real server
+        working-directory: server
+        run: npm ci && npm run build && npm test
+      - name: Verify Java miner against real HTTPS server
+        run: |
+          curl -fsSL https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o "$RUNNER_TEMP/json.jar"
+          python3 apps/pengminer-android/tests/server-proof.py "$RUNNER_TEMP/json.jar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PengMiner-Android-debug
+          path: apps/pengminer-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

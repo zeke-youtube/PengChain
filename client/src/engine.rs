@@ -111,7 +111,16 @@ pub async fn run() -> Result<()> {
         .transpose()?;
     send(Event::Ready {
         cpu_count: std::thread::available_parallelism()?.get(),
-        devices,
+        devices: devices.into_iter().map(|device| pengwallet_protocol::Device {
+            id: device.id,
+            index: device.index,
+            name: device.name,
+            vendor: device.vendor,
+            device_type: device.device_type,
+            memory_bytes: device.memory_bytes,
+            integrated: device.integrated,
+            available: device.available,
+        }).collect(),
         warning,
     })?;
     let Some(mut config) = configuration else {

@@ -28,3 +28,8 @@ The Tauri 2 Windows desktop miner lives in [`apps/pengminer`](apps/pengminer).
 It runs the separately bundled PengWallet CLI process and provides a React dashboard,
 CPU/OpenCL controls, wallet login, and live measured statistics. See its
 [setup, build, and validation instructions](apps/pengminer/README.md).
+
+## Android miner
+
+The native Android PENG CPU miner, build/install instructions, and verification
+steps are in [apps/pengminer-android](apps/pengminer-android/README.md).

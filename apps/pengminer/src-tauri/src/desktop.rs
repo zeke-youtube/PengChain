@@ -45,7 +45,7 @@ async fn refresh(engine: tauri::State<'_, Arc<Engine>>) -> Result<Snapshot, Stri
 #[tauri::command]
 async fn create_token(
     engine: tauri::State<'_, Arc<Engine>>,
-    request: pengminer::api::CreateTokenRequest,
+    request: crate::api::CreateTokenRequest,
 ) -> Result<Snapshot, String> {
     engine.create_token(request).await.map_err(failure)
 }

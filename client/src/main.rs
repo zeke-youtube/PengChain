@@ -183,7 +183,7 @@ async fn run(cli: Cli) -> Result<()> {
     let base = cli.server.trim_end_matches('/');
     let endpoint = |path: &str| format!("{base}{path}");
     match cli.command {
-        Command::Engine => engine::run().await,
+        Command::Engine => return engine::run().await,
         Command::Create { password } => {
             let password = match password {
                 Some(value) => value,

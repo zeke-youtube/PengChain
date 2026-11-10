@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/pengminer/**"
       - "client/**"
+      - "crates/**"
       - "server/**"
       - ".github/workflows/pengminer-windows.yml"
 
@@ -20,7 +21,7 @@ permissions:
 jobs:
   server:
     name: Server checks
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       npm_config_msvs_version: "2022"
       GYP_MSVS_VERSION: "2022"
@@ -31,13 +32,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: server/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Build and test server
         working-directory: server
         run: npm ci && npm run build && npm test
 
   frontend:
     name: Frontend checks
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,7 +58,7 @@ jobs:
 
   cli:
     name: CLI checks
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -66,20 +70,36 @@ jobs:
 
   desktop-core:
     name: Desktop core checks
-    runs-on: windows-latest
+    runs-on: windows-2022
+    env:
+      npm_config_msvs_version: "2022"
+      GYP_MSVS_VERSION: "2022"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/pengminer/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build integration test server
+        working-directory: server
+        run: npm ci && npm run build
+      - name: Build integration test engine
+        run: cargo build --release --locked --manifest-path client/Cargo.toml
       - name: Test desktop core
         run: cargo test --locked --manifest-path apps/pengminer/src-tauri/Cargo.toml --no-default-features
 
   installer:
     name: Windows installer
     needs: [server, frontend, cli, desktop-core]
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

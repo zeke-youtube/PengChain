@@ -4,10 +4,13 @@ import base64
 import os
 from pathlib import Path
 import subprocess
-from server_fixture import fixture
+from server_fixture import ROOT, fixture
 
 sdk = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
 adb = str(Path(sdk) / 'platform-tools/adb') if sdk else 'adb'
+android = ROOT / 'apps/pengminer-android'
+for apk in ['app/build/outputs/apk/debug/app-debug.apk', 'app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk']:
+    subprocess.run([adb, 'install', '-r', str(android / apk)], check=True)
 with fixture() as (temp, port, wallet):
     certificate = base64.b64encode((temp / 'cert.pem').read_bytes()).decode()
     for method in ['nativeMiningAndSavedSession', 'restoreAfterProcessRestartAndSignOut']:

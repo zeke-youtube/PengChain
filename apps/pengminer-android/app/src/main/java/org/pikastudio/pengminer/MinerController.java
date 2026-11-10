@@ -191,7 +191,7 @@ final class MinerController {
     return snapshot();
   }
 
-  private void initialize() throws Exception {
+  private synchronized void initialize() throws Exception {
     if (initialized) return;
     initialized = true;
     String server = settings().getString("server");
@@ -251,7 +251,7 @@ final class MinerController {
         "sessionNotice",
         api != null && !api.remembered
             ? "Login is saved securely, but this server still expires sessions after 24 hours."
-                  + " Update the PengChain server to enable lasting login."
+                + " Update the PengChain server to enable lasting login."
             : JSONObject.NULL);
   }
 
@@ -278,7 +278,13 @@ final class MinerController {
       state.put("settings", next).put("error", JSONObject.NULL);
     }
     if (changedServer) {
-      api = vault.load(next.getString("server"));
+      api = null;
+      try {
+        api = vault.load(next.getString("server"));
+      } catch (Exception error) {
+        vault.clear(next.getString("server"));
+        log("session_error", "Saved login for this server could not be restored. Sign in again.");
+      }
       synchronized (this) {
         state
             .put("walletId", api == null ? JSONObject.NULL : api.wallet)
@@ -293,9 +299,10 @@ final class MinerController {
     log("settings_saved", "Workspace settings saved.");
   }
 
-  private PengApi requireSession() {
+  private synchronized PengApi requireSession() {
     PengApi session = api;
-    if (session == null)
+    if (session == null
+        || !session.origin.equals(state.optJSONObject("settings").optString("server")))
       throw new IllegalStateException("Sign in before mining or changing your wallet");
     return session;
   }

@@ -31,12 +31,14 @@ public final class MainActivity extends Activity {
 
   @android.annotation.SuppressLint(
       "SetJavaScriptEnabled") // Only bundled, intercepted assets can execute; navigation and remote
-                              // requests are blocked.
+  // requests are blocked.
   @Override
   public void onCreate(Bundle state) {
     super.onCreate(state);
     controller = MinerController.get(this);
     web = new WebView(this);
+    // Android 8 WebView compositor drivers can leave black tiles in fixed/grid layouts.
+    if (Build.VERSION.SDK_INT < 28) web.setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null);
     web.setBackgroundColor(android.graphics.Color.rgb(16, 21, 19));
     WebSettings settings = web.getSettings();
     settings.setJavaScriptEnabled(true);

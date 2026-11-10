@@ -529,12 +529,15 @@ final class MinerController {
     try {
       String message =
           error instanceof java.io.IOException
-              ? "Connection lost. Mining stopped; check wallet balance before restarting."
+              ? (running
+                  ? "Connection lost. Mining stopped; check wallet balance before restarting."
+                  : "Could not reach the PengChain server. Check your connection and refresh.")
               : error.getMessage();
       synchronized (this) {
         state.put("error", message);
+        if (error instanceof java.io.IOException) state.put("connected", false);
       }
-      log("mining_error", message);
+      log(running ? "mining_error" : "workspace_error", message);
     } catch (Exception ignored) {
     }
   }

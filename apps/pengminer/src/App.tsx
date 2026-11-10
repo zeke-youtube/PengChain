@@ -729,13 +729,13 @@ export default function App() {
                   <p>
                     {state
                       ? `${count} logical threads available`
-                      : "Waiting for desktop hardware detection"}
+                      : "Detecting CPU threads"}
                   </p>
                   <dl>
                     <dt>Identifier</dt>
                     <dd>cpu</dd>
                     <dt>Backend</dt>
-                    <dd>Native Rust PCA-10</dd>
+                    <dd>Native PCA-10</dd>
                   </dl>
                   <button
                     className="button secondary"
@@ -1213,7 +1213,8 @@ export default function App() {
               <ShieldCheck size={13} /> Server-authoritative ledger · PCA-10
             </span>
             <span>
-              PikaStudio <span className="footer-dot">/</span> PengMiner 1.0.0
+              PikaStudio <span className="footer-dot">/</span> PengMiner{" "}
+              {android ? "1.1.0" : "1.0.0"}
             </span>
           </footer>
         </div>

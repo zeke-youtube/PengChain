@@ -117,7 +117,14 @@ public final class MiningService extends Service {
   private Notification notification(String text) {
     PendingIntent open =
         PendingIntent.getActivity(
-            this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
+            this,
+            0,
+            new Intent(this, MainActivity.class)
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE);
     PendingIntent stop =
         PendingIntent.getService(
             this,

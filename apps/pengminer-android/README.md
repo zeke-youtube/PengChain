@@ -55,7 +55,8 @@ Only acknowledged receipts count as earnings. Balances and rewards are integer
 base units; recent receipts are scoped to the wallet/server and retained locally.
 Hashrate counts completed evaluations and includes network waits in its average.
 
-A foreground service keeps Stop visible while mining. Closing the app keeps
+Optional reward/error alerts follow the Notifications setting; OS notification
+permission still applies. A foreground service keeps Stop visible while mining. Closing the app keeps
 mining when the corresponding setting is enabled; disabling it stops mining when
 the app leaves the foreground. Stop cancels CPU work and waits for any already
 submitted proof acknowledgement. Unknown submission outcomes are never replayed.

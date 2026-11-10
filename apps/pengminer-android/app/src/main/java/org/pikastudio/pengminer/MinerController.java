@@ -561,6 +561,45 @@ final class MinerController {
             .put("message", message));
     state.put("logs", last(logs, 150));
     emit(kind);
+    notifyEvent(kind, message);
+  }
+
+  private void notifyEvent(String kind, String message) {
+    if (!state.optJSONObject("settings").optBoolean("notifications")
+        || !("reward_accepted".equals(kind) || "mining_error".equals(kind))) return;
+    if (android.os.Build.VERSION.SDK_INT >= 33
+        && context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+    try {
+      android.app.NotificationManager manager =
+          context.getSystemService(android.app.NotificationManager.class);
+      manager.createNotificationChannel(
+          new android.app.NotificationChannel(
+              "events",
+              "Mining rewards and errors",
+              android.app.NotificationManager.IMPORTANCE_DEFAULT));
+      Intent open =
+          new Intent(context, MainActivity.class)
+              .addFlags(
+                  Intent.FLAG_ACTIVITY_NEW_TASK
+                      | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                      | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+      android.app.PendingIntent content =
+          android.app.PendingIntent.getActivity(
+              context, 3, open, android.app.PendingIntent.FLAG_IMMUTABLE);
+      manager.notify(
+          2,
+          new android.app.Notification.Builder(context, "events")
+              .setSmallIcon(android.R.drawable.ic_media_play)
+              .setContentTitle("PengMiner")
+              .setContentText(message)
+              .setContentIntent(content)
+              .setAutoCancel(true)
+              .setOnlyAlertOnce(true)
+              .build());
+    } catch (RuntimeException ignored) {
+      // OS notification restrictions must not interrupt proof processing.
+    }
   }
 
   private synchronized void emit(String kind) throws Exception {

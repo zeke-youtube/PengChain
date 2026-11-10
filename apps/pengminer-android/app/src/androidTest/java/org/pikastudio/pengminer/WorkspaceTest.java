@@ -115,6 +115,7 @@ public class WorkspaceTest {
         MinerController.defaults()
             .put("server", InstrumentationRegistry.getArguments().getString("fixtureServer"))
             .put("intensity", 100)
+            .put("notifications", true)
             .put("minimizeToTray", true);
     java.nio.file.Files.write(
         new java.io.File(context.getFilesDir(), "settings.json").toPath(),
@@ -144,6 +145,18 @@ public class WorkspaceTest {
           stopped.getLong("earnings"),
           stopped.getJSONArray("balances").getJSONObject(0).getLong("amount"));
       assertTrue(stopped.getBoolean("persistent"));
+      if (android.os.Build.VERSION.SDK_INT < 33
+          || context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+              == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        boolean notified = false;
+        for (android.service.notification.StatusBarNotification notification :
+            context
+                .getSystemService(android.app.NotificationManager.class)
+                .getActiveNotifications()) {
+          if (notification.getId() == 2) notified = true;
+        }
+        assertTrue("Enabled reward notifications were not delivered", notified);
+      }
       assertFalse(stopped.toString().contains("android-test-password"));
       assertFalse(stopped.toString().contains("peng_session="));
       assertTrue(stopped.isNull("sessionNotice"));

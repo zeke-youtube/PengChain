@@ -1020,3 +1020,133 @@ select {
   background-position: right 12px center;
   padding-right: 30px;
 }
+
+@media (max-width: 680px) {
+  .app {
+    display: block;
+  }
+  .sidebar {
+    position: sticky;
+    inset: auto;
+    top: 0;
+    width: 100%;
+    padding: 12px;
+    z-index: 10;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    padding: 0 5px 12px;
+    font-size: 19px;
+  }
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .nav-label,
+  .sidebar-bottom {
+    display: none;
+  }
+  nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  nav button {
+    justify-content: center;
+    padding: 10px 4px;
+    gap: 6px;
+    font-size: 11px;
+  }
+  nav button svg {
+    width: 15px;
+    height: 15px;
+  }
+  main {
+    margin-left: 0;
+  }
+  .topbar {
+    height: 48px;
+    padding: 0 16px;
+  }
+  .breadcrumbs {
+    gap: 6px;
+    font-size: 10px;
+  }
+  .top-actions {
+    gap: 8px;
+  }
+  .avatar {
+    display: none;
+  }
+  .content {
+    padding: 20px 14px;
+  }
+  .page-heading {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .page-heading h1 {
+    font-size: 25px;
+  }
+  .page-heading p {
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .eyebrow {
+    font-size: 9px;
+  }
+  .stats-grid,
+  .balance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat {
+    padding: 16px 12px;
+  }
+  .stat strong {
+    font-size: 21px;
+    overflow-wrap: anywhere;
+  }
+  .login-panel form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login-panel {
+    padding: 20px;
+  }
+  .wallet-banner {
+    flex-wrap: wrap;
+    padding: 20px;
+  }
+  .wallet-banner h2 {
+    overflow-wrap: anywhere;
+  }
+  .form-panel {
+    padding: 20px;
+  }
+  .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .log-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .log-row p {
+    width: 100%;
+    overflow-wrap: anywhere;
+  }
+  footer {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  input,
+  select {
+    min-width: 0;
+    font-size: 16px;
+  }
+  .chart-axis {
+    font-size: 8px;
+  }
+}

@@ -71,19 +71,19 @@ export function buildApp(db: Database.Database): FastifyInstance {
     return p.toString("base64url");
   };
   app.get("/", async (_req, reply) => {
-    reply.type("text/html").send(
-      readFileSync(join(siteRoot, "../public/download.html"), "utf8"),
-    );
+    reply
+      .type("text/html")
+      .send(readFileSync(join(siteRoot, "../public/download.html"), "utf8"));
   });
   app.get("/tokens", async (_req, reply) => {
-    reply.type("text/html").send(
-      readFileSync(join(siteRoot, "../public/tokens.html"), "utf8"),
-    );
+    reply
+      .type("text/html")
+      .send(readFileSync(join(siteRoot, "../public/tokens.html"), "utf8"));
   });
   app.get("/logs", async (_req, reply) => {
-    reply.type("text/html").send(
-      readFileSync(join(siteRoot, "../public/logs.html"), "utf8"),
-    );
+    reply
+      .type("text/html")
+      .send(readFileSync(join(siteRoot, "../public/logs.html"), "utf8"));
   });
   app.get("/health", async () => ({ ok: true }));
   app.post("/blockchain/api/wallet/create", async (req: any, reply) => {
@@ -109,7 +109,9 @@ export function buildApp(db: Database.Database): FastifyInstance {
     };
   });
   app.post("/blockchain/api/wallet/login", async (req: any, reply) => {
-    const p = walletSchema.extend({ walletId: z.string() }).safeParse(req.body);
+    const p = walletSchema
+      .extend({ walletId: z.string(), rememberMe: z.boolean().default(false) })
+      .safeParse(req.body);
     if (!p.success) return reply.code(400).send({ error: "invalid request" });
     const w = db
       .prepare("SELECT * FROM wallets WHERE id=?")
@@ -120,7 +122,7 @@ export function buildApp(db: Database.Database): FastifyInstance {
     db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(
       sid,
       w.id,
-      now() + 86400000,
+      p.data.rememberMe ? Number.MAX_SAFE_INTEGER : now() + 86400000,
       now(),
     );
     audit(db, "wallet.login", { walletId: w.id });
@@ -129,9 +131,9 @@ export function buildApp(db: Database.Database): FastifyInstance {
       sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: 86400,
+      maxAge: p.data.rememberMe ? 315360000 : 86400,
     });
-    return { walletId: w.id, role: w.role };
+    return { walletId: w.id, role: w.role, persistent: p.data.rememberMe };
   });
   app.post(
     "/blockchain/api/wallet/logout",
@@ -155,21 +157,43 @@ export function buildApp(db: Database.Database): FastifyInstance {
         )
         .all(req.wallet.id),
   );
-  app.get("/blockchain/api/admin/peng-reward-range", { preHandler: auth }, async (req: any, reply) => {
-    if (req.wallet.role !== "OWNER") return reply.code(403).send({ error: "owner access required" });
-    return db.prepare("SELECT CAST((SELECT value FROM meta WHERE key='peng_reward_min') AS INTEGER) minimum, CAST((SELECT value FROM meta WHERE key='peng_reward_max') AS INTEGER) maximum").get();
-  });
-  app.put("/blockchain/api/admin/peng-reward-range", { preHandler: auth }, async (req: any, reply) => {
-    if (req.wallet.role !== "OWNER") return reply.code(403).send({ error: "owner access required" });
-    const parsed = pengRewardRangeSchema.safeParse(req.body);
-    if (!parsed.success || parsed.data.minimum > parsed.data.maximum) return reply.code(400).send({ error: "invalid reward range" });
-    db.transaction(() => {
-      db.prepare("INSERT INTO meta(key,value) VALUES('peng_reward_min',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(parsed.data.minimum));
-      db.prepare("INSERT INTO meta(key,value) VALUES('peng_reward_max',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(parsed.data.maximum));
-      audit(db, "admin.peng_reward_range_changed", { walletId: req.wallet.id, ...parsed.data });
-    })();
-    return parsed.data;
-  });
+  app.get(
+    "/blockchain/api/admin/peng-reward-range",
+    { preHandler: auth },
+    async (req: any, reply) => {
+      if (req.wallet.role !== "OWNER")
+        return reply.code(403).send({ error: "owner access required" });
+      return db
+        .prepare(
+          "SELECT CAST((SELECT value FROM meta WHERE key='peng_reward_min') AS INTEGER) minimum, CAST((SELECT value FROM meta WHERE key='peng_reward_max') AS INTEGER) maximum",
+        )
+        .get();
+    },
+  );
+  app.put(
+    "/blockchain/api/admin/peng-reward-range",
+    { preHandler: auth },
+    async (req: any, reply) => {
+      if (req.wallet.role !== "OWNER")
+        return reply.code(403).send({ error: "owner access required" });
+      const parsed = pengRewardRangeSchema.safeParse(req.body);
+      if (!parsed.success || parsed.data.minimum > parsed.data.maximum)
+        return reply.code(400).send({ error: "invalid reward range" });
+      db.transaction(() => {
+        db.prepare(
+          "INSERT INTO meta(key,value) VALUES('peng_reward_min',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        ).run(String(parsed.data.minimum));
+        db.prepare(
+          "INSERT INTO meta(key,value) VALUES('peng_reward_max',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        ).run(String(parsed.data.maximum));
+        audit(db, "admin.peng_reward_range_changed", {
+          walletId: req.wallet.id,
+          ...parsed.data,
+        });
+      })();
+      return parsed.data;
+    },
+  );
   app.post(
     "/blockchain/api/token",
     { preHandler: auth },
@@ -344,15 +368,26 @@ export function buildApp(db: Database.Database): FastifyInstance {
       if (!t || !t.mineable)
         return reply.code(400).send({ error: "mineable token not found" });
       const lastAccepted = db
-        .prepare("SELECT MAX(accepted_at) acceptedAt FROM mining_solutions WHERE token_id=?")
+        .prepare(
+          "SELECT MAX(accepted_at) acceptedAt FROM mining_solutions WHERE token_id=?",
+        )
         .get(t.id) as { acceptedAt: number | null };
-      const emergency = emergencyDifficulty(t.difficulty, lastAccepted.acceptedAt, now());
+      const emergency = emergencyDifficulty(
+        t.difficulty,
+        lastAccepted.acceptedAt,
+        now(),
+      );
       if (emergency < t.difficulty) {
         const previousAdjustment = db
-          .prepare("SELECT 1 FROM audit_log WHERE event_type='mining.difficulty_emergency' AND payload LIKE ? AND created_at > COALESCE(?, 0) LIMIT 1")
+          .prepare(
+            "SELECT 1 FROM audit_log WHERE event_type='mining.difficulty_emergency' AND payload LIKE ? AND created_at > COALESCE(?, 0) LIMIT 1",
+          )
           .get(`%\"tokenId\":\"${t.id}\"%`, lastAccepted.acceptedAt);
         if (!previousAdjustment) {
-          db.prepare("UPDATE tokens SET difficulty=? WHERE id=?").run(emergency, t.id);
+          db.prepare("UPDATE tokens SET difficulty=? WHERE id=?").run(
+            emergency,
+            t.id,
+          );
           t.difficulty = emergency;
           audit(db, "mining.difficulty_emergency", {
             tokenId: t.id,

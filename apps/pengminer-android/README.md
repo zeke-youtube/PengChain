@@ -1,74 +1,108 @@
 # PengMiner Android
 
-Native Android 8+ (API 26+) PENG CPU miner. The app logs into an existing PengChain
-wallet over HTTPS, requests real PENG jobs, computes ten SHA-256 rounds over the
-canonical v1 input, and submits decimal uint64 nonces. Only acknowledged server
-receipts count as earnings. No simulated hashes or rewards, CLI subprocess, WebView,
-GPU backend, wallet keys, or changes to the ledger protocol are involved.
+Android 8+ uses the desktop app's **same React screens, components, styles, and
+command contract**, including Dashboard, Devices, Mining, Wallet, Settings, token
+creation, measured hashrate charts, reward history, themes, and server audit logs.
+The layout adapts to phone widths. CPU threads and 25/50/100% intensity are real;
+OpenCL GPU and PPU mining are unavailable on Android and cannot be selected.
+
+A restricted WebView renders the bundled UI. It cannot navigate to remote pages,
+read local files, or make network requests. Only named native commands are exposed.
+Java performs HTTPS authentication, encrypted session storage, PCA-10 hashing,
+proof submission, counters, and the foreground service. Passwords and session
+cookies are never returned to the UI. No mining or reward data is simulated.
 
 ## Build and install
 
-Install JDK 17 and Android SDK platform 35. Set `ANDROID_HOME` to the SDK directory,
-or set `sdk.dir` in an untracked `local.properties` file. Then:
+Install Node 22+, JDK 17, Android SDK platform 35, and an up-to-date Android System
+WebView on the device. Set `ANDROID_HOME` or untracked `local.properties` (`sdk.dir`).
+From the repository root:
 
 ```sh
+npm --prefix apps/pengminer ci
 cd apps/pengminer-android
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Windows uses `gradlew.bat`. The Gradle 8.9 wrapper is checked in with its official
-SHA-256 pinned. CI builds the APK and uploads `PengMiner-Android-debug`. This is a
-sideloadable debug-signed APK; a distribution release needs your own signing key.
+Gradle builds and bundles the shared desktop UI automatically. Windows uses
+`gradlew.bat`. Launch PengMiner, configure the HTTPS origin in Settings if needed,
+and sign in to your existing wallet. Mining starts only when you press Start or
+explicitly enable Start mining on launch. Start on launch validates the saved
+session first; no boot receiver or automatic restart after process death exists.
 
-Open PengMiner, enter the HTTPS server origin, wallet ID, password, and network ID
-(default `pengchain-v1`). Choose CPU intensity and tap **Sign in & start mining**.
-Allow notifications to keep the Stop action visible in the notification drawer.
-The default server is `https://pengchain.pikastudio.org`. Wallet creation and server
-administration remain in the existing wallet/server tools.
+## Login that stays saved
 
-One CPU worker performs real hashing at 25%, 50%, or 100% duty-cycle targets. These
-are scheduling settings, not measured battery/power limits. Average H/s includes
-network waits. Earnings and balances are integer base units. Counters reset on
-each explicit start; balances come from the server.
+The session is encrypted with AES-GCM using a non-exportable Android Keystore key.
+It survives Stop, activity/process/device restarts, and app updates signed with the
+same key. The app never saves your password. Saved sessions are isolated by exact
+server origin. Sign out revokes the server session and removes local ciphertext;
+if offline, the local copy is still removed. Clearing app data or uninstalling
+removes the saved login. Backups and device transfers of app data are disabled.
 
-Mining continues in a foreground service while the screen is closed. Stop from
-the app or notification. A request already submitted when Stop is tapped may still
-be accepted; the worker reads its acknowledgement before finishing. Connection
-and read timeouts are 10 and 15 seconds. Network errors, rejection, or malformed
-responses end the session; a proof with an uncertain outcome is never replayed.
-Expired unsolved jobs are replaced. Android may terminate the process; mining never
-automatically restarts after process death, reboot, or a login failure.
+Deploy the updated PengChain server to support `rememberMe: true`: remembered
+native sessions have no automatic expiry and remain valid until logout or
+server-side revocation. Ordinary browser logins still expire after 24 hours.
+Older servers continue to work, but the app shows a notice that they still expire
+sessions. Deploying this APK alone cannot change the session policy of an older
+server. The desktop app also requests remembered sessions.
 
-The app stops at Android's severe thermal level on Android 10+. Android 8/9 do not
-provide that API; monitor temperature yourself. No wake lock is acquired, so the
-OS can suspend work while sleeping. The app uses a `specialUse` foreground service
-for explicit CPU mining. Store submission and device/vendor power policies require
-separate review; no Play Store eligibility is claimed.
+## Mining behavior
 
-Passwords and session cookies exist only in process memory and are never saved,
-logged, put in notifications, or sent to the UI. Sign in again after stopping.
-HTTPS certificate verification is mandatory, redirects are disabled, credential
-URLs and non-origin server URLs are rejected, cleartext traffic and backups are
-disabled, and the mining service is not exported. No autostart or background-start
-receiver exists.
+The same canonical v1 encoding and ten SHA-256 rounds are used. Parallel workers
+search separate uint64 nonce lanes, with decimal strings at the API boundary.
+Only acknowledged receipts count as earnings. Balances and rewards are integer
+base units; recent receipts are scoped to the wallet/server and retained locally.
+Hashrate counts completed evaluations and includes network waits in its average.
+
+A foreground service keeps Stop visible while mining. Closing the app keeps
+mining when the corresponding setting is enabled; disabling it stops mining when
+the app leaves the foreground. Stop cancels CPU work and waits for any already
+submitted proof acknowledgement. Unknown submission outcomes are never replayed.
+Network errors and rejected proofs stop the worker. Android can terminate the
+service; it never automatically restarts. No wake lock is acquired.
+
+Android 10+ stops at severe thermal status. Physical temperature/performance and
+vendor power policies still need device validation. Notifications and OS battery
+policies may affect background operation. No Play Store eligibility is claimed.
+
+## Automatic GitHub releases
+
+`PengMiner Windows` calls the Android workflow, builds both apps from the same
+commit, and tests the server, shared frontend, CPU/CLI, desktop engine, and Android
+UI/Keystore. Successful pushes to `main` automatically publish **build-RUN_ID**
+with every APK/installer and `SHA256SUMS.txt`. Explicit manual runs also publish.
+Pull requests build/test without publishing. An incomplete upload stays in draft;
+reruns cannot replace an already published build with different binaries.
+
+Optional stable release signing uses repository Actions secrets:
+
+- `PENGMINER_ANDROID_KEYSTORE_BASE64`: base64 PKCS12/JKS, alias `pengminer`.
+- `PENGMINER_ANDROID_KEYSTORE_PASSWORD`: the keystore/key password.
+
+Without them, CI publishes a clearly named debug APK. A new CI debug signing key
+can require uninstalling an older APK, which clears saved login. To preserve login
+across future APK updates, configure the stable private signing key once. Do not
+commit signing files or paste secret values into chat. The current connection
+cannot administer repository secrets; configure them in GitHub Settings.
 
 ## Verification
 
-Unit tests check the same exact PCA-10 vectors as Rust, nibble difficulty,
-cancellation, expiry, and malformed challenges. An additional integration harness
-compiles the shipped Java API and solver and runs them against a temporary real
-server/SQLite database behind local HTTPS. The test trusts only its generated
-fixture certificate, with no change to the shipped app's trust configuration:
-
 ```sh
+# Repository root; Java, Node 22+, Python, and OpenSSL on PATH
 npm --prefix server ci
 npm --prefix server run build
+npm --prefix server test
+node --test scripts/publish-build.test.cjs
 curl -fsSL https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o /tmp/peng-json.jar
 python3 apps/pengminer-android/tests/server-proof.py /tmp/peng-json.jar
+
+# Android device/emulator with System WebView installed
+cd apps/pengminer-android
+./gradlew connectedDebugAndroidTest
 ```
 
-Run those commands from the repository root with Java, Python 3, OpenSSL, and Node
-22+ on PATH. The test checks unsafe origins, bad-password rejection, real proof
-acceptance, reward range, wallet balance, and replay rejection. No live wallet or
-production mining is used by tests.
+Tests include exact cross-language PCA-10 vectors, parallel proof correctness,
+active-job cancellation, HTTPS proof acceptance/replay rejection, SQLite session
+restart/revocation, encrypted Android login restore/clear/origin isolation, and
+rendering all six desktop pages without horizontal overflow on a phone.

@@ -155,7 +155,7 @@ impl Api {
         let response = self
             .client
             .post(format!("{}/blockchain/api/wallet/login", self.server))
-            .json(&serde_json::json!({"walletId":wallet_id,"password":password}))
+            .json(&serde_json::json!({"walletId":wallet_id,"password":password,"rememberMe":true}))
             .send()
             .await?;
         let cookie = response

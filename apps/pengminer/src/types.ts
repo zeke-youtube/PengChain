@@ -44,6 +44,7 @@ export interface Snapshot {
   connected: boolean;
   walletId: string | null;
   persistent: boolean;
+  sessionNotice?: string | null;
   settings: Settings;
   currentHashrate: number;
   averageHashrate: number;

@@ -6,12 +6,45 @@ android {
         applicationId 'org.pikastudio.pengminer'
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '1.0.0'
+        versionCode System.getenv('GITHUB_RUN_NUMBER') ? 1000 + Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER')) : 2
+        versionName '1.1.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    if (System.getenv('PENGMINER_ANDROID_KEYSTORE')) {
+        signingConfigs {
+            release {
+                storeFile file(System.getenv('PENGMINER_ANDROID_KEYSTORE'))
+                storePassword System.getenv('PENGMINER_ANDROID_KEYSTORE_PASSWORD')
+                keyAlias 'pengminer'
+                keyPassword System.getenv('PENGMINER_ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+        buildTypes.release.signingConfig signingConfigs.release
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 }
-dependencies { testImplementation 'junit:junit:4.13.2' }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
+
+
+def frontend = file('../../pengminer')
+def frontendBuild = tasks.register('buildSharedFrontend', Exec) {
+    workingDir frontend
+    commandLine (System.getProperty('os.name').toLowerCase().contains('windows') ? 'npm.cmd' : 'npm'), 'run', 'build'
+    inputs.dir(new File(frontend, 'src'))
+    inputs.files(new File(frontend, 'index.html'), new File(frontend, 'vite.config.ts'), new File(frontend, 'package-lock.json'))
+    outputs.dir(new File(frontend, 'dist'))
+}
+def webAssets = tasks.register('copySharedFrontend', Sync) {
+    dependsOn frontendBuild
+    from new File(frontend, 'dist')
+    into layout.buildDirectory.dir('generated/webAssets/www')
+}
+android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/webAssets'))
+tasks.named('preBuild').configure { dependsOn webAssets }

@@ -40,6 +40,15 @@ public final class MainActivity extends Activity {
     // Android 8 WebView compositor drivers can leave black tiles in fixed/grid layouts.
     if (Build.VERSION.SDK_INT < 28) web.setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null);
     web.setBackgroundColor(android.graphics.Color.rgb(16, 21, 19));
+    if (Build.VERSION.SDK_INT >= 35) {
+      web.setOnApplyWindowInsetsListener(
+          (view, insets) -> {
+            android.graphics.Insets bars =
+                insets.getInsets(android.view.WindowInsets.Type.systemBars());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
+          });
+    }
     WebSettings settings = web.getSettings();
     settings.setJavaScriptEnabled(true);
     settings.setAllowFileAccess(false);

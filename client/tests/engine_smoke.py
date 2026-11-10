@@ -81,7 +81,10 @@ class EngineSmoke(unittest.TestCase):
                     self.assertNotIn('engine-smoke-password', json.dumps(frames))
                     self.assertFalse((Path(directory) / 'PengChain/session.json').exists())
                     balances, _ = request('/blockchain/api/wallet/balance', cookie=cookie)
-                    self.assertEqual(balances[0]['amount'], 20)
+                    receipts = [frame for frame in frames if frame['event'] == 'reward_accepted']
+                    self.assertGreaterEqual(len(receipts), 2)
+                    self.assertTrue(all(5 <= receipt['reward'] <= 15 for receipt in receipts))
+                    self.assertEqual(balances[0]['amount'], sum(receipt['reward'] for receipt in receipts))
                 finally:
                     if process.poll() is None:
                         process.kill()

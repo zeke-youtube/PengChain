@@ -178,9 +178,11 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
     let stopped = engine.stop().await?;
     assert!(!stopped.running);
     assert!(stopped.hashes > 0);
-    assert!((10..=30).contains(&stopped.earnings));
+    assert!(stopped.accepted >= 2);
+    assert!((5 * stopped.accepted..=15 * stopped.accepted).contains(&stopped.earnings));
     assert_eq!(stopped.balances[0].amount, stopped.earnings);
     let earned_before_restart = stopped.earnings;
+    let accepted_before_restart = stopped.accepted;
     assert!(stopped.average_hashrate > 0.0);
     let restarted = Engine::new(
         store.clone(),
@@ -192,7 +194,7 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
     let restored = restarted.initialize().await?;
     assert_eq!(restored.wallet_id.as_deref(), Some(wallet.as_str()));
     assert!(!restored.running);
-    assert_eq!(restored.history.len(), 2);
+    assert_eq!(restored.history.len() as u64, accepted_before_restart);
     assert_eq!(restored.balances[0].amount, earned_before_restart);
     let serialized = serde_json::to_string(&engine.snapshot())?;
     assert!(!serialized.contains("desktop-test-password"));

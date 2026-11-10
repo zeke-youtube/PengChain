@@ -9,3 +9,13 @@ Owners can read or update the PENG reward range with the authenticated `GET` and
 Authentication uses an HttpOnly SameSite cookie named `peng_session`. Production deployments must terminate HTTPS at a trusted reverse proxy or directly in front of the server.
 
 Wallet creation and token creation accept JSON. Transfer amounts are integer base units. Mining nonces are decimal strings so clients do not lose 64-bit precision.
+
+Native apps can send `rememberMe: true` to `POST /blockchain/api/wallet/login`.
+The login response includes `persistent: true` for this mode. The server stores a
+session without automatic expiry (the SQLite integer sentinel is JavaScript's
+maximum safe integer), and the native app keeps the cookie in OS-protected
+storage until logout, revocation, or app-data removal. The response cookie has a
+long browser max-age; native session storage is independent of browser expiry.
+Omitting `rememberMe` retains the ordinary 24-hour session policy. Logout deletes
+the session, including remembered sessions. This requires deploying the updated
+server; old servers may ignore the optional field and retain their 24-hour expiry.

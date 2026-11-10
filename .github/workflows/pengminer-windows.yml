@@ -6,6 +6,9 @@ on:
   pull_request:
     paths:
       - "apps/pengminer/**"
+      - "apps/pengminer-android/**"
+      - "scripts/publish-build*"
+      - ".github/workflows/pengminer-android.yml"
       - "client/**"
       - "crates/**"
       - "server/**"
@@ -19,6 +22,11 @@ permissions:
   contents: read
 
 jobs:
+  android:
+    name: Android app
+    uses: ./.github/workflows/pengminer-android.yml
+    secrets: inherit
+
   server:
     name: Server checks
     runs-on: windows-2022
@@ -38,6 +46,8 @@ jobs:
       - name: Build and test server
         working-directory: server
         run: npm ci && npm run build && npm test
+      - name: Test automatic release publishing
+        run: node --test scripts/publish-build.test.cjs
 
   frontend:
     name: Frontend checks
@@ -124,3 +134,26 @@ jobs:
           name: PengMiner-Windows-NSIS
           path: apps/pengminer/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
+
+  release:
+    name: Publish build release
+    needs: [installer, android]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: release-${{ github.run_id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PengMiner-*
+          path: release-assets
+      - name: Publish all verified artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await require('./scripts/publish-build.cjs')({github, context, core});

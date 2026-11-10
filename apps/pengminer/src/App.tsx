@@ -29,6 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  android,
   appendSample,
   command,
   desktop,
@@ -68,14 +69,14 @@ const time = (value: number) => new Date(value).toLocaleTimeString();
 function Chart({ samples }: { samples: Sample[] }) {
   const max = Math.max(1, ...samples.map((sample) => sample.rate)) * 1.15;
   const first = samples[0]?.time ?? 0;
-  const span = (samples.at(-1)?.time ?? first) - first;
+  const span = (samples[samples.length - 1]?.time ?? first) - first;
   const points = samples
     .map(
       (sample) =>
         `${((sample.time - first) / Math.max(0.001, span)) * 900},${160 - (sample.rate / max) * 140}`,
     )
     .join(" ");
-  const latest = samples.at(-1);
+  const latest = samples[samples.length - 1];
   const latestPoint = latest
     ? `${((latest.time - first) / Math.max(0.001, span)) * 900},${160 - (latest.rate / max) * 140}`
     : "";
@@ -351,7 +352,9 @@ export default function App() {
           onChange={(e) => update("device", e.target.value)}
         >
           <option value="cpu">CPU · {count} available threads</option>
-          <option value="gpu:auto">GPU · prefer a dedicated device</option>
+          <option value="gpu:auto" disabled={android}>
+            GPU · prefer a dedicated device
+          </option>
           {gpus.map((g) => (
             <option key={g.id} value={g.id} disabled={!g.available}>
               {g.name}
@@ -407,9 +410,15 @@ export default function App() {
         symbol: tokenForm.symbol.toUpperCase(),
         maxSupply: tokenForm.maxSupply ? Number(tokenForm.maxSupply) : null,
         mineable: tokenForm.mineable,
-        miningReward: tokenForm.mineable ? Number(tokenForm.miningReward) : undefined,
-        difficulty: tokenForm.mineable ? Number(tokenForm.difficulty) : undefined,
-        initialIssuance: tokenForm.mineable ? 0 : Number(tokenForm.initialIssuance),
+        miningReward: tokenForm.mineable
+          ? Number(tokenForm.miningReward)
+          : undefined,
+        difficulty: tokenForm.mineable
+          ? Number(tokenForm.difficulty)
+          : undefined,
+        initialIssuance: tokenForm.mineable
+          ? 0
+          : Number(tokenForm.initialIssuance),
       },
     });
     setTokenForm((current) => ({ ...current, name: "", symbol: "" }));
@@ -521,6 +530,9 @@ export default function App() {
               </span>
             </div>
           )}
+          {state?.sessionNotice && (
+            <div className="notice">{state.sessionNotice}</div>
+          )}
           {(error || state?.error) && (
             <div className="notice error" role="alert">
               {error || state?.error}
@@ -535,8 +547,8 @@ export default function App() {
                 </div>
                 <p>Use your existing PengChain wallet to start earning.</p>
                 <span className="small muted">
-                  Sessions use your OS credential store when available.
-                  Passwords are never saved.
+                  Stay signed in until you sign out or your session is revoked.
+                  Sessions use secure device storage. Passwords are never saved.
                 </span>
               </div>
               <form onSubmit={signIn}>
@@ -928,17 +940,111 @@ export default function App() {
                 <div className="panel-head">
                   <div>
                     <h2>Create a token</h2>
-                    <p>Issue a server-authoritative custom asset from this wallet.</p>
+                    <p>
+                      Issue a server-authoritative custom asset from this
+                      wallet.
+                    </p>
                   </div>
                   <Sparkles size={19} />
                 </div>
-                <form className="two-col" onSubmit={(event) => void createToken(event)}>
-                  <label>Token name<input required value={tokenForm.name} onChange={(event) => setTokenForm({ ...tokenForm, name: event.target.value })} placeholder="Fish Coin" /></label>
-                  <label>Symbol<input required maxLength={16} value={tokenForm.symbol} onChange={(event) => setTokenForm({ ...tokenForm, symbol: event.target.value })} placeholder="FISH" /></label>
-                  <label>Maximum supply<input type="number" min="1" value={tokenForm.maxSupply} onChange={(event) => setTokenForm({ ...tokenForm, maxSupply: event.target.value })} placeholder="Unlimited" /></label>
-                  <label>Mode<select value={tokenForm.mineable ? "mineable" : "issued"} onChange={(event) => setTokenForm({ ...tokenForm, mineable: event.target.value === "mineable" })}><option value="mineable">Mineable</option><option value="issued">Initial issuance</option></select></label>
-                  {tokenForm.mineable ? <label>Mining reward<input type="number" min="1" value={tokenForm.miningReward} onChange={(event) => setTokenForm({ ...tokenForm, miningReward: event.target.value })} /></label> : <label>Initial issuance<input type="number" min="0" value={tokenForm.initialIssuance} onChange={(event) => setTokenForm({ ...tokenForm, initialIssuance: event.target.value })} /></label>}
-                  <button className="button primary" type="submit" disabled={disabled || !state?.walletId}><Sparkles size={15} /> Create token</button>
+                <form
+                  className="two-col"
+                  onSubmit={(event) => void createToken(event)}
+                >
+                  <label>
+                    Token name
+                    <input
+                      required
+                      value={tokenForm.name}
+                      onChange={(event) =>
+                        setTokenForm({ ...tokenForm, name: event.target.value })
+                      }
+                      placeholder="Fish Coin"
+                    />
+                  </label>
+                  <label>
+                    Symbol
+                    <input
+                      required
+                      maxLength={16}
+                      value={tokenForm.symbol}
+                      onChange={(event) =>
+                        setTokenForm({
+                          ...tokenForm,
+                          symbol: event.target.value,
+                        })
+                      }
+                      placeholder="FISH"
+                    />
+                  </label>
+                  <label>
+                    Maximum supply
+                    <input
+                      type="number"
+                      min="1"
+                      value={tokenForm.maxSupply}
+                      onChange={(event) =>
+                        setTokenForm({
+                          ...tokenForm,
+                          maxSupply: event.target.value,
+                        })
+                      }
+                      placeholder="Unlimited"
+                    />
+                  </label>
+                  <label>
+                    Mode
+                    <select
+                      value={tokenForm.mineable ? "mineable" : "issued"}
+                      onChange={(event) =>
+                        setTokenForm({
+                          ...tokenForm,
+                          mineable: event.target.value === "mineable",
+                        })
+                      }
+                    >
+                      <option value="mineable">Mineable</option>
+                      <option value="issued">Initial issuance</option>
+                    </select>
+                  </label>
+                  {tokenForm.mineable ? (
+                    <label>
+                      Mining reward
+                      <input
+                        type="number"
+                        min="1"
+                        value={tokenForm.miningReward}
+                        onChange={(event) =>
+                          setTokenForm({
+                            ...tokenForm,
+                            miningReward: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  ) : (
+                    <label>
+                      Initial issuance
+                      <input
+                        type="number"
+                        min="0"
+                        value={tokenForm.initialIssuance}
+                        onChange={(event) =>
+                          setTokenForm({
+                            ...tokenForm,
+                            initialIssuance: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  )}
+                  <button
+                    className="button primary"
+                    type="submit"
+                    disabled={disabled || !state?.walletId}
+                  >
+                    <Sparkles size={15} /> Create token
+                  </button>
                 </form>
               </section>
             </>
@@ -949,19 +1055,21 @@ export default function App() {
               <p>
                 Stop mining before changing connection or hardware settings.
               </p>
-              <label>
-                PengWallet CLI executable (optional override)
-                <input
-                  value={draft.enginePath}
-                  disabled={disabled || running}
-                  placeholder="Use the included pengwallet.exe"
-                  onChange={(e) => update("enginePath", e.target.value)}
-                />
-                <span className="small muted">
-                  Leave blank to use the separately bundled CLI. An override
-                  must be an absolute path to a trusted PengWallet executable.
-                </span>
-              </label>
+              {!android && (
+                <label>
+                  PengWallet CLI executable (optional override)
+                  <input
+                    value={draft.enginePath}
+                    disabled={disabled || running}
+                    placeholder="Use the included pengwallet.exe"
+                    onChange={(e) => update("enginePath", e.target.value)}
+                  />
+                  <span className="small muted">
+                    Leave blank to use the separately bundled CLI. An override
+                    must be an absolute path to a trusted PengWallet executable.
+                  </span>
+                </label>
+              )}
               <div className="two-col">
                 <label>
                   PengChain server URL
@@ -972,8 +1080,9 @@ export default function App() {
                     onChange={(e) => update("server", e.target.value)}
                   />
                   <span className="small muted">
-                    HTTPS required for remote servers. Loopback HTTP is allowed
-                    for local development.
+                    {android
+                      ? "HTTPS is required. Your login stays scoped to this server."
+                      : "HTTPS required for remote servers. Loopback HTTP is allowed for local development."}
                   </span>
                 </label>
                 <label>
@@ -1008,12 +1117,18 @@ export default function App() {
                       ],
                       [
                         "minimizeToTray",
-                        "Close to system tray",
-                        "Keep mining when the window is closed. Quit from the tray to stop.",
+                        android
+                          ? "Keep mining when app closes"
+                          : "Close to system tray",
+                        android
+                          ? "A foreground notification keeps Stop available. Turn this off to stop when leaving the app."
+                          : "Keep mining when the window is closed. Quit from the tray to stop.",
                       ],
                       [
                         "notifications",
-                        "Desktop notifications",
+                        android
+                          ? "Mining notifications"
+                          : "Desktop notifications",
                         "Notify on accepted rewards and mining errors.",
                       ],
                     ] as const
@@ -1061,7 +1176,7 @@ export default function App() {
                     <span
                       className={`log-kind ${log.kind.includes("error") ? "red" : ""}`}
                     >
-                      {log.kind.replaceAll("_", " ")}
+                      {log.kind.split("_").join(" ")}
                     </span>
                     <p>{log.message}</p>
                   </div>
@@ -1082,7 +1197,7 @@ export default function App() {
                   <div className="log-row" key={log.id}>
                     <time>{time(log.createdAt)}</time>
                     <span className="log-kind">
-                      {log.eventType.replaceAll(".", " ")}
+                      {log.eventType.split(".").join(" ")}
                     </span>
                     <p>{log.payload}</p>
                   </div>

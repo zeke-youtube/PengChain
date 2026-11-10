@@ -20,3 +20,7 @@ crates/pengwallet-protocol/target/
 apps/pengminer-android/.gradle/
 apps/pengminer-android/**/build/
 apps/pengminer-android/local.properties
+
+apps/pengminer-android/distribution/
+
+apps/pengminer-android/tests/__pycache__/

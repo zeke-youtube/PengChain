@@ -2,121 +2,190 @@ package org.pikastudio.pengminer;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.Intent;
-import android.os.*;
-import android.graphics.Color;
-import android.text.InputType;
-import android.view.View;
-import android.widget.*;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import java.io.ByteArrayInputStream;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import org.json.JSONObject;
 
+/** The exact desktop React bundle, served locally with a narrow native bridge. */
 public final class MainActivity extends Activity {
-    static volatile String miningSummary = "";
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private EditText server;
-    private EditText wallet;
-    private EditText password;
-    private EditText network;
-    private Spinner intensity;
-    private TextView status;
-    private Button start;
-    private Button stop;
-    private final Runnable refresh = new Runnable() {
-        @Override public void run() {
-            status.setText(MiningService.running ? miningSummary : MiningService.status);
-            boolean idle = !MiningService.running;
-            start.setEnabled(idle);
-            stop.setEnabled(!idle);
-            for (View field : new View[] {server, wallet, password, network, intensity}) field.setEnabled(idle);
-            handler.postDelayed(this, 500);
-        }
-    };
+  private static final String HOST = "appassets.androidplatform.net";
+  private WebView web;
+  private MinerController controller;
+  private final ExecutorService commands = Executors.newSingleThreadExecutor();
+  private volatile boolean destroyed;
+  private final Consumer<JSONObject> events = event -> dispatch("pengminer:event", event);
 
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        int padding = (int) (24 * getResources().getDisplayMetrics().density);
-        layout.setPadding(padding, padding, padding, padding);
-        layout.setBackgroundColor(Color.rgb(16, 25, 37));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(layout);
-        setContentView(scroll);
-        TextView title = text("PENG / MINER", 28);
-        layout.addView(title);
-        layout.addView(text("Real PCA-10 CPU mining • Android", 16));
-        layout.addView(text("Mining uses battery and generates heat. Start only on a device you control. One CPU worker; stops at severe thermal status. Rewards are confirmed by your server.", 14));
-        server = field(layout, "HTTPS server", "https://pengchain.pikastudio.org", false);
-        wallet = field(layout, "Existing wallet ID", "", false);
-        password = field(layout, "Password (held in memory only)", "", true);
-        network = field(layout, "Network ID", "pengchain-v1", false);
-        layout.addView(text("CPU intensity", 14));
-        intensity = new Spinner(this);
-        intensity.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[] {"25%", "50%", "100%"}));
-        layout.addView(intensity);
-        start = new Button(this);
-        start.setText(R.string.start_mining);
-        layout.addView(start);
-        stop = new Button(this);
-        stop.setText(R.string.stop_mining);
-        layout.addView(stop);
-        layout.addView(text("Sessions are not saved. Mining continues with a notification when this screen closes. Android may stop the service; it never restarts itself.", 14));
-        status = text(MiningService.status, 18);
-        status.setTextIsSelectable(true);
-        layout.addView(status);
-        start.setOnClickListener(view -> {
-            String secret = password.getText().toString();
-            if (secret.isEmpty() || wallet.getText().toString().trim().isEmpty()
-                    || network.getText().toString().trim().isEmpty()) {
-                Toast.makeText(this, "Enter wallet, password, and network ID", Toast.LENGTH_LONG).show();
-                return;
+  @android.annotation.SuppressLint(
+      "SetJavaScriptEnabled") // Only bundled, intercepted assets can execute; navigation and remote
+                              // requests are blocked.
+  @Override
+  public void onCreate(Bundle state) {
+    super.onCreate(state);
+    controller = MinerController.get(this);
+    web = new WebView(this);
+    web.setBackgroundColor(android.graphics.Color.rgb(16, 21, 19));
+    WebSettings settings = web.getSettings();
+    settings.setJavaScriptEnabled(true);
+    settings.setAllowFileAccess(false);
+    settings.setAllowContentAccess(false);
+    settings.setDomStorageEnabled(false);
+    settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+    settings.setSaveFormData(false);
+    settings.setJavaScriptCanOpenWindowsAutomatically(false);
+    web.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+    web.addJavascriptInterface(new Bridge(), "PengMinerAndroid");
+    web.setWebViewClient(
+        new WebViewClient() {
+          @Override
+          public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            return !local(request.getUrl());
+          }
+
+          @Override
+          public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+            if (!local(Uri.parse(url))) {
+              view.removeJavascriptInterface("PengMinerAndroid");
+              view.stopLoading();
             }
+          }
+
+          @Override
+          public WebResourceResponse shouldInterceptRequest(
+              WebView view, WebResourceRequest request) {
+            Uri uri = request.getUrl();
+            if (!local(uri)) return blocked();
+            String path = uri.getPath();
+            if (path == null || path.contains("..") || path.indexOf('\\') >= 0) return blocked();
+            if ("/".equals(path)) path = "/index.html";
+            String type =
+                path.endsWith(".js")
+                    ? "application/javascript"
+                    : path.endsWith(".css")
+                        ? "text/css"
+                        : path.endsWith(".svg") ? "image/svg+xml" : "text/html";
             try {
-                new PengApi(server.getText().toString().trim(), wallet.getText().toString().trim());
-                Intent intent = new Intent(this, MiningService.class)
-                        .putExtra("server", server.getText().toString().trim())
-                        .putExtra("wallet", wallet.getText().toString().trim())
-                        .putExtra("password", secret)
-                        .putExtra("network", network.getText().toString().trim())
-                        .putExtra("intensity", new int[] {25, 50, 100}[intensity.getSelectedItemPosition()]);
-                password.setText("");
-                miningSummary = "Starting…";
-                startForegroundService(intent);
-            } catch (Exception error) {
-                Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
+              Map<String, String> headers = new HashMap<>();
+              headers.put(
+                  "Content-Security-Policy",
+                  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src"
+                      + " 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none';"
+                      + " frame-src 'none'; base-uri 'none'; form-action 'none'");
+              headers.put("X-Content-Type-Options", "nosniff");
+              return new WebResourceResponse(
+                  type, "UTF-8", 200, "OK", headers, getAssets().open("www" + path));
+            } catch (java.io.IOException missing) {
+              return blocked();
             }
+          }
         });
-        stop.setOnClickListener(view -> startService(new Intent(this, MiningService.class).setAction(MiningService.STOP)));
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 1);
-        }
+    setContentView(web);
+    web.loadUrl("https://" + HOST + "/index.html");
+    if (Build.VERSION.SDK_INT >= 33
+        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 1);
     }
+  }
 
-    private TextView text(String value, int size) {
-        TextView view = new TextView(this);
-        view.setText(value);
-        view.setTextSize(size);
-        view.setTextColor(Color.rgb(224, 237, 244));
-        view.setPadding(0, 12, 0, 12);
-        return view;
+  private static boolean local(Uri uri) {
+    return "https".equals(uri.getScheme()) && HOST.equals(uri.getHost());
+  }
+
+  private static WebResourceResponse blocked() {
+    return new WebResourceResponse(
+        "text/plain",
+        "UTF-8",
+        403,
+        "Blocked",
+        new HashMap<>(),
+        new ByteArrayInputStream(new byte[0]));
+  }
+
+  private void dispatch(String type, JSONObject payload) {
+    runOnUiThread(
+        () -> {
+          if (!destroyed)
+            web.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent("
+                    + JSONObject.quote(type)
+                    + ",{detail:"
+                    + payload.toString()
+                    + "}))",
+                null);
+        });
+  }
+
+  private final class Bridge {
+    @JavascriptInterface
+    public void request(String id, String name, String serialized) {
+      if (id == null
+          || !id.matches("[0-9]{1,12}")
+          || serialized == null
+          || serialized.length() > 65_536) return;
+      commands.execute(
+          () -> {
+            JSONObject reply = new JSONObject();
+            try {
+              reply
+                  .put("id", id)
+                  .put("result", controller.command(name, new JSONObject(serialized)));
+            } catch (Exception error) {
+              controller.fail(error);
+              try {
+                reply
+                    .put("id", id)
+                    .put(
+                        "error",
+                        error instanceof java.io.IOException
+                            ? "Could not reach the PengChain server"
+                            : java.util.Objects.toString(
+                                error.getMessage(), "Native command failed"));
+              } catch (Exception ignored) {
+              }
+            }
+            dispatch("pengminer:response", reply);
+          });
     }
+  }
 
-    private EditText field(LinearLayout layout, String label, String value, boolean secret) {
-        layout.addView(text(label, 14));
-        EditText view = new EditText(this);
-        view.setSingleLine(true);
-        view.setTextColor(Color.WHITE);
-        view.setInputType(secret ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
-                : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        view.setText(value);
-        view.setSaveEnabled(!secret);
-        if (secret) view.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        layout.addView(view);
-        return view;
+  @Override
+  public void onResume() {
+    super.onResume();
+    controller.listen(events);
+  }
+
+  @Override
+  public void onStop() {
+    super.onStop();
+    try {
+      if (!isChangingConfigurations() && !controller.settings().getBoolean("minimizeToTray"))
+        controller.requestStop();
+    } catch (Exception ignored) {
+      controller.requestStop();
     }
+  }
 
-    @Override public void onResume() { super.onResume(); handler.post(refresh); }
-    @Override public void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
+  @Override
+  public void onDestroy() {
+    destroyed = true;
+    controller.unlisten(events);
+    commands.shutdown();
+    web.removeJavascriptInterface("PengMinerAndroid");
+    web.destroy();
+    super.onDestroy();
+  }
 }

@@ -71,6 +71,47 @@ describe("PengChain server", () => {
     });
     expect(bad.statusCode).toBe(401);
   });
+  it("keeps remembered native logins until sign-out or revocation", async () => {
+    const { app, db } = make();
+    const walletId = await create(app);
+    const response = await app.inject({
+      method: "POST",
+      url: "/blockchain/api/wallet/login",
+      payload: { walletId, password: "password123", rememberMe: true },
+    });
+    expect(response.statusCode).toBe(200);
+    const cookie = String(response.headers["set-cookie"]).split(";")[0];
+    const session = db
+      .prepare("SELECT expires_at FROM sessions WHERE wallet_id=?")
+      .get(walletId) as { expires_at: number };
+    expect(session.expires_at).toBe(Number.MAX_SAFE_INTEGER);
+    const balance = () =>
+      app.inject({
+        method: "GET",
+        url: "/blockchain/api/wallet/balance",
+        headers: { cookie },
+      });
+    expect((await balance()).statusCode).toBe(200);
+    await app.inject({
+      method: "POST",
+      url: "/blockchain/api/wallet/logout",
+      headers: { cookie },
+    });
+    expect((await balance()).statusCode).toBe(401);
+    const regular = await login(app, walletId);
+    db.prepare("UPDATE sessions SET expires_at=0 WHERE wallet_id=?").run(
+      walletId,
+    );
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/blockchain/api/wallet/balance",
+          headers: { cookie: regular },
+        })
+      ).statusCode,
+    ).toBe(401);
+  });
   it("rejects PENG recreation and symbol collision", async () => {
     const { app } = make();
     const walletId = await create(app);

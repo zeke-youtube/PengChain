@@ -38,7 +38,8 @@ final class MinerController {
   private volatile Consumer<JSONObject> listener;
   private volatile CountDownLatch stopped = new CountDownLatch(0);
   private volatile boolean running;
-  private boolean initialized;
+  private final AtomicBoolean initialized = new AtomicBoolean();
+  private final CountDownLatch initializationReady = new CountDownLatch(1);
   private long started;
   private long sampledAt;
   private long previousHashes;
@@ -191,29 +192,38 @@ final class MinerController {
     return snapshot();
   }
 
-  private synchronized void initialize() throws Exception {
-    if (initialized) return;
-    initialized = true;
-    String server = settings().getString("server");
-    try {
-      api = vault.load(server);
-      if (api != null) {
-        synchronized (this) {
-          state.put("walletId", api.wallet).put("persistent", true);
-          sessionNotice();
-          filterHistory();
-        }
-        log("session_restored", "Saved login restored from Android Keystore.");
+  private void initialize() throws Exception {
+    if (!initialized.compareAndSet(false, true)) {
+      if (!initializationReady.await(90, TimeUnit.SECONDS)) {
+        throw new IllegalStateException(
+            "Session restoration is taking longer than expected. Try again.");
       }
-    } catch (Exception error) {
-      vault.clear(server);
-      log("session_error", "Saved login could not be decrypted. Sign in again.");
+      return;
     }
     try {
-      refresh();
-      if (api != null && settings().optBoolean("startOnLaunch")) start();
-    } catch (Exception error) {
-      fail(error);
+      String server = settings().getString("server");
+      try {
+        api = vault.load(server);
+        if (api != null) {
+          synchronized (this) {
+            state.put("walletId", api.wallet).put("persistent", true);
+            sessionNotice();
+            filterHistory();
+          }
+          log("session_restored", "Saved login restored from Android Keystore.");
+        }
+      } catch (Exception error) {
+        vault.clear(server);
+        log("session_error", "Saved login could not be decrypted. Sign in again.");
+      }
+      try {
+        refresh();
+        if (api != null && !cancel.get() && settings().optBoolean("startOnLaunch")) start();
+      } catch (Exception error) {
+        fail(error);
+      }
+    } finally {
+      initializationReady.countDown();
     }
   }
 

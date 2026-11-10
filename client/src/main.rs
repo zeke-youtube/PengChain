@@ -1,5 +1,6 @@
 use pengwallet::{gpu, mining};
 mod ui;
+mod engine;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -35,6 +36,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Private JSON pipe protocol used by PengMiner
+    #[command(hide = true)]
+    Engine,
     /// Create a wallet and sign in; prompts for a password when omitted
     Create { password: Option<String> },
     /// Sign in and save your session for later commands
@@ -179,6 +183,7 @@ async fn run(cli: Cli) -> Result<()> {
     let base = cli.server.trim_end_matches('/');
     let endpoint = |path: &str| format!("{base}{path}");
     match cli.command {
+        Command::Engine => engine::run().await,
         Command::Create { password } => {
             let password = match password {
                 Some(value) => value,

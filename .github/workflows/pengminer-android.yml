@@ -60,9 +60,15 @@ jobs:
         run: |
           curl -fsSL https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o "$RUNNER_TEMP/json.jar"
           python3 apps/pengminer-android/tests/server-proof.py "$RUNNER_TEMP/json.jar"
+      - name: Enable Android emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Verify shared UI and Android Keystore on a device
         uses: reactivecircus/android-emulator-runner@v2
         with:
+          disable-linux-hw-accel: false
           api-level: 29
           target: google_apis
           arch: x86_64

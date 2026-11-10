@@ -35,7 +35,16 @@ public final class ServerProof {
       } catch (IllegalArgumentException expected) {
       }
     }
-    PengApi api = new PengApi(args[0], args[2]);
+    PengApi registration = new PengApi(args[0], "");
+    JSONObject created =
+        (JSONObject)
+            registration.request(
+                "POST",
+                "/wallet/create",
+                new JSONObject().put("password", "android-test-password"));
+    String wallet = created.getString("walletId");
+    if (!wallet.startsWith("PENG-")) throw new AssertionError("No generated wallet ID");
+    PengApi api = new PengApi(args[0], wallet);
     try {
       api.login("wrong-password");
       throw new AssertionError("Bad password accepted");
@@ -77,7 +86,7 @@ public final class ServerProof {
     } catch (IllegalStateException expected) {
     }
     System.out.println(
-        "PASS: HTTPS login, unsafe origins, real PCA-10 proof ("
+        "PASS: HTTPS wallet creation, login, unsafe origins, real PCA-10 proof ("
             + hashes.get()
             + " hashes), accepted reward, wallet balance, replay rejection");
   }

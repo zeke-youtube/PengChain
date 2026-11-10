@@ -251,6 +251,18 @@ impl Engine {
         }
         Ok(self.snapshot())
     }
+    pub async fn create_wallet(&self, password: String) -> Result<String> {
+        let _guard = self.commands.lock().await;
+        if self.snapshot().running {
+            bail!("Stop mining before creating a wallet");
+        }
+        if !(8..=256).contains(&password.encode_utf16().count()) {
+            bail!("Password must have 8–256 characters");
+        }
+        Api::new(&self.snapshot().settings.server)?
+            .create_wallet(&password)
+            .await
+    }
     pub async fn login(self: &Arc<Self>, wallet: String, password: String) -> Result<Snapshot> {
         let _guard = self.commands.lock().await;
         if self.snapshot().running {

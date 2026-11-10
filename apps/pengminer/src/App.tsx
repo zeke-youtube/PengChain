@@ -210,6 +210,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [wallet, setWallet] = useState("");
   const [password, setPassword] = useState("");
+  const [creatingWallet, setCreatingWallet] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [createdWallet, setCreatedWallet] = useState<string | null>(null);
   const [tokenForm, setTokenForm] = useState({
     name: "",
     symbol: "",
@@ -310,9 +313,43 @@ export default function App() {
     setDraft((previous) => ({ ...previous, [key]: value }));
   const signIn = (event: FormEvent) => {
     event.preventDefault();
+    if (
+      busy ||
+      (creatingWallet &&
+        (password.length < 8 ||
+          password.length > 256 ||
+          password !== confirmation))
+    )
+      return;
     const secret = password;
     setPassword("");
-    void act("login", { wallet, password: secret });
+    setConfirmation("");
+    if (!creatingWallet) {
+      void act("login", { wallet, password: secret });
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    void (async () => {
+      try {
+        const result = await command<{ walletId: string }>("create_wallet", {
+          password: secret,
+        });
+        setWallet(result.walletId);
+        setCreatedWallet(result.walletId);
+        setCreatingWallet(false);
+        apply(
+          await command<Snapshot>("login", {
+            wallet: result.walletId,
+            password: secret,
+          }),
+        );
+      } catch (e) {
+        setError(String(e instanceof Error ? e.message : e));
+      } finally {
+        setBusy(false);
+      }
+    })();
   };
   const theme =
     draft.theme === "system"
@@ -538,31 +575,63 @@ export default function App() {
               {error || state?.error}
             </div>
           )}
+          {createdWallet && (
+            <div className="notice" role="status">
+              Wallet created: <strong>{createdWallet}</strong>. Save this ID and
+              your password to sign in on another device. Passwords cannot be
+              recovered.
+            </div>
+          )}
           {!state?.walletId && page !== "Settings" && (
             <section className="panel login-panel">
               <div>
                 <div className="section-title">
                   <Wallet size={19} />
-                  <h2>Connect your wallet</h2>
+                  <h2>
+                    {creatingWallet
+                      ? "Create your wallet"
+                      : "Connect your wallet"}
+                  </h2>
                 </div>
-                <p>Use your existing PengChain wallet to start earning.</p>
+                <p>
+                  {creatingWallet
+                    ? "Choose a password with 8–256 characters. Your server will assign a wallet ID."
+                    : "Use your existing PengChain wallet to start earning."}
+                </p>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    setCreatingWallet(!creatingWallet);
+                    setPassword("");
+                    setConfirmation("");
+                    setError(null);
+                  }}
+                >
+                  {creatingWallet ? "Use existing wallet" : "Create wallet"}
+                </button>
                 <span className="small muted">
                   Stay signed in until you sign out or your session is revoked.
                   Sessions use secure device storage. Passwords are never saved.
                 </span>
               </div>
               <form onSubmit={signIn}>
-                <label className="sr-only" htmlFor="wallet">
-                  Wallet ID
-                </label>
-                <input
-                  id="wallet"
-                  placeholder="Wallet ID · PENG-…"
-                  value={wallet}
-                  onChange={(e) => setWallet(e.target.value)}
-                  required
-                  disabled={disabled}
-                />
+                {!creatingWallet && (
+                  <>
+                    <label className="sr-only" htmlFor="wallet">
+                      Wallet ID
+                    </label>
+                    <input
+                      id="wallet"
+                      placeholder="Wallet ID · PENG-…"
+                      value={wallet}
+                      onChange={(e) => setWallet(e.target.value)}
+                      required
+                      disabled={disabled}
+                    />
+                  </>
+                )}
                 <label className="sr-only" htmlFor="password">
                   Password
                 </label>
@@ -570,17 +639,40 @@ export default function App() {
                   id="password"
                   type="password"
                   placeholder="Password"
-                  autoComplete="current-password"
+                  autoComplete={
+                    creatingWallet ? "new-password" : "current-password"
+                  }
+                  minLength={creatingWallet ? 8 : undefined}
+                  maxLength={256}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={disabled}
                 />
+                {creatingWallet && (
+                  <input
+                    aria-label="Confirm password"
+                    type="password"
+                    placeholder="Confirm password"
+                    autoComplete="new-password"
+                    value={confirmation}
+                    onChange={(e) => setConfirmation(e.target.value)}
+                    required
+                    disabled={disabled}
+                  />
+                )}
                 <button
                   className="button primary"
-                  disabled={disabled || !wallet || !password}
+                  disabled={
+                    disabled ||
+                    !password ||
+                    (creatingWallet
+                      ? password.length < 8 || password !== confirmation
+                      : !wallet)
+                  }
                 >
-                  Sign in <ArrowUpRight size={15} />
+                  {creatingWallet ? "Create and sign in" : "Sign in"}{" "}
+                  <ArrowUpRight size={15} />
                 </button>
               </form>
             </section>

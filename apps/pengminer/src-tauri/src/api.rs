@@ -151,6 +151,22 @@ impl Api {
         }
         Ok(())
     }
+    pub async fn create_wallet(&self, password: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Created {
+            wallet_id: String,
+        }
+        let result: Created = Self::decode(
+            self.client
+                .post(format!("{}/blockchain/api/wallet/create", self.server))
+                .json(&serde_json::json!({"password": password}))
+                .send()
+                .await?,
+        )
+        .await?;
+        Ok(result.wallet_id)
+    }
     pub async fn login(&self, wallet_id: &str, password: &str) -> Result<Session> {
         let response = self
             .client

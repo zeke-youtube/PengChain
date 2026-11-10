@@ -19,6 +19,17 @@ fn snapshot(engine: tauri::State<'_, Arc<Engine>>) -> Snapshot {
     engine.snapshot()
 }
 #[tauri::command]
+async fn create_wallet(
+    engine: tauri::State<'_, Arc<Engine>>,
+    password: String,
+) -> Result<serde_json::Value, String> {
+    engine
+        .create_wallet(password)
+        .await
+        .map(|wallet| serde_json::json!({"walletId": wallet}))
+        .map_err(failure)
+}
+#[tauri::command]
 async fn login(
     engine: tauri::State<'_, Arc<Engine>>,
     wallet: String,
@@ -84,6 +95,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             login,
+            create_wallet,
             logout,
             start_mining,
             stop_mining,

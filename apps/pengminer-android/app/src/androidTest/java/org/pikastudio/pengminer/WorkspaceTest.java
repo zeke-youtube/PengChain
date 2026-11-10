@@ -125,6 +125,25 @@ public class WorkspaceTest {
             new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     MinerController controller = MinerController.get(context);
     try {
+      JSONObject created =
+          (JSONObject)
+              controller.command(
+                  "create_wallet", new JSONObject().put("password", "created-wallet-password"));
+      String walletId = created.getString("walletId");
+      assertTrue(walletId.startsWith("PENG-"));
+      JSONObject signedIn =
+          (JSONObject)
+              controller.command(
+                  "login",
+                  new JSONObject()
+                      .put("wallet", walletId)
+                      .put("password", "created-wallet-password"));
+      assertEquals(walletId, signedIn.getString("walletId"));
+      assertTrue(signedIn.getBoolean("persistent"));
+      PengApi savedWallet = new SessionVault(context).load(settings.getString("server"));
+      assertNotNull(savedWallet);
+      assertEquals(walletId, savedWallet.wallet);
+      controller.command("logout", new JSONObject());
       controller.command(
           "login",
           new JSONObject()

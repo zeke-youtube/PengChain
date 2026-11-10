@@ -107,3 +107,14 @@ Tests include exact cross-language PCA-10 vectors, parallel proof correctness,
 active-job cancellation, HTTPS proof acceptance/replay rejection, SQLite session
 restart/revocation, encrypted Android login restore/clear/origin isolation, and
 rendering all six desktop pages without horizontal overflow on a phone.
+
+### Create a wallet
+
+On the signed-out screen, choose **Create wallet**, enter and confirm a password
+of 8–256 characters, then choose **Create and sign in**. The server assigns the
+wallet ID; the app signs in and saves the session in secure device storage.
+Save the displayed wallet ID and your password to use the same wallet on desktop
+or another phone connected to the same server. Passwords cannot be recovered.
+If creation succeeds but sign-in fails, the ID stays visible and prefilled so
+you can retry signing in without creating another wallet. The desktop app uses
+the same flow and saves sessions in the operating system credential store.

@@ -128,15 +128,6 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let value: serde_json::Value = reqwest::Client::new()
-        .post(format!("{address}/blockchain/api/wallet/create"))
-        .json(&serde_json::json!({"password":"desktop-test-password"}))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-    let wallet = value["walletId"].as_str().unwrap().to_owned();
     let events = Arc::new(Mutex::new(Vec::<MiningEvent>::new()));
     let event_copy = Arc::clone(&events);
     let store = Arc::new(MemoryStore::default());
@@ -153,6 +144,9 @@ async fn real_server_start_stop_wallet_restart_and_network_errors() -> Result<()
         ..Settings::default()
     };
     engine.save_settings(settings).await?;
+    assert!(engine.create_wallet("short".into()).await.is_err());
+    let wallet = engine.create_wallet("desktop-test-password".into()).await?;
+    assert!(wallet.starts_with("PENG-"));
     assert!(engine
         .login(wallet.clone(), "incorrect-password".into())
         .await

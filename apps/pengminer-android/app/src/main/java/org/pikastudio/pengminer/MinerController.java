@@ -166,6 +166,17 @@ final class MinerController {
       case "save_settings":
         saveSettings(args.getJSONObject("settings"));
         break;
+      case "create_wallet":
+        if (running) throw new IllegalStateException("Stop mining before creating a wallet");
+        String password = args.getString("password");
+        if (password.length() < 8 || password.length() > 256)
+          throw new IllegalArgumentException("Password must have 8–256 characters");
+        PengApi registration = new PengApi(settings().getString("server"), "");
+        JSONObject created =
+            (JSONObject)
+                registration.request(
+                    "POST", "/wallet/create", new JSONObject().put("password", password));
+        return new JSONObject().put("walletId", created.getString("walletId"));
       case "login":
         login(args.getString("wallet"), args.getString("password"));
         break;

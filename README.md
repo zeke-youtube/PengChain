@@ -33,3 +33,11 @@ CPU/OpenCL controls, wallet login, and live measured statistics. See its
 
 The native Android PENG CPU miner, build/install instructions, and verification
 steps are in [apps/pengminer-android](apps/pengminer-android/README.md).
+
+## Browser miner
+
+The standalone [web miner](web-miner/index.html) mines PENG with embedded Web
+Workers and the existing PCA-10 protocol. It uses the server's session cookie
+and credits only server-confirmed receipts. See [hosting and verification
+instructions](web-miner/README.md) for same-origin HTTPS deployment, strict CSP,
+resource controls, and isolated browser tests. No frontend build is required.

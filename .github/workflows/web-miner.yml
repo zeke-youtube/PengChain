@@ -1,0 +1,46 @@
+name: PengChain Web Miner
+on:
+  pull_request:
+    paths:
+      - "web-miner/**"
+      - "server/**"
+      - "client/src/mining.rs"
+      - ".github/workflows/web-miner.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web-miner/**"
+      - "server/**"
+      - "client/src/mining.rs"
+      - ".github/workflows/web-miner.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            apps/pengminer/package-lock.json
+      - name: Build and verify authoritative server
+        working-directory: server
+        run: npm ci && npm run build && npm test
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client
+      - name: Run PengWallet CPU protocol vectors
+        run: cargo test --locked --manifest-path client/Cargo.toml --lib mining::tests
+      - name: Compare standalone browser algorithm with server and Rust vectors
+        run: node web-miner/tests/protocol.test.mjs
+      - name: Install browser test tools
+        working-directory: apps/pengminer
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Mine against isolated SQLite server in Chromium
+        run: node web-miner/tests/browser.mjs

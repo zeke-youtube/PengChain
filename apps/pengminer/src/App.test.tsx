@@ -11,6 +11,7 @@ const mock = vi.hoisted(() => ({
   command: vi.fn(),
   subscribe: vi.fn(),
   unlisten: vi.fn(),
+  writeText: vi.fn(),
 }));
 vi.mock("./bridge", async (original) => ({
   ...(await original<typeof import("./bridge")>()),
@@ -59,6 +60,11 @@ const snapshot = (): Snapshot => ({
 });
 beforeEach(() => {
   vi.clearAllMocks();
+  mock.writeText.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: mock.writeText },
+  });
   mock.subscribe.mockImplementation(async (fn) => {
     callback = fn;
     return mock.unlisten;
@@ -70,7 +76,7 @@ beforeEach(() => {
 describe("PengMiner desktop UI", () => {
   it("has honest empty charts, no auto-mining, and disabled PPU hardware", async () => {
     render(<App />);
-    await screen.findByText("Connect your wallet");
+    await screen.findByRole("heading", { name: "Sign in" });
     expect(
       screen.getByText("Start mining to see measured performance"),
     ).toBeInTheDocument();
@@ -85,8 +91,8 @@ describe("PengMiner desktop UI", () => {
   });
   it("signs in through IPC and clears the password field", async () => {
     render(<App />);
-    await screen.findByText("Connect your wallet");
-    fireEvent.change(screen.getByLabelText("Wallet ID"), {
+    await screen.findByRole("heading", { name: "Sign in" });
+    fireEvent.change(screen.getByLabelText("Wallet address"), {
       target: { value: "PENG-TEST" },
     });
     fireEvent.change(screen.getByLabelText("Password"), {
@@ -109,21 +115,25 @@ describe("PengMiner desktop UI", () => {
       return snapshot();
     });
     render(<App />);
-    await screen.findByText("Connect your wallet");
-    fireEvent.click(screen.getByRole("button", { name: "Create wallet" }));
-    fireEvent.change(screen.getByLabelText("Password"), {
+    await screen.findByRole("heading", { name: "Sign in" });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(
+      screen.getByRole("heading", { name: "Create account" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Wallet address")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Set password"), {
       target: { value: "new-password" },
     });
     fireEvent.change(screen.getByLabelText("Confirm password"), {
       target: { value: "different" },
     });
     expect(
-      screen.getByRole("button", { name: /Create and sign in/ }),
+      screen.getByRole("button", { name: "Create account" }),
     ).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Confirm password"), {
       target: { value: "new-password" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Create and sign in/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() =>
       expect(mock.command).toHaveBeenCalledWith("login", {
         wallet: "PENG-NEW",
@@ -133,7 +143,16 @@ describe("PengMiner desktop UI", () => {
     expect(mock.command).toHaveBeenCalledWith("create_wallet", {
       password: "new-password",
     });
-    expect(screen.getByRole("status")).toHaveTextContent("PENG-NEW");
+    expect(screen.getByRole("status")).toHaveTextContent("You’re signed in.");
+    expect(screen.getByLabelText("Your wallet address")).toHaveValue(
+      "PENG-NEW",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy wallet address" }),
+    );
+    await screen.findByRole("button", { name: "Copied" });
+    expect(mock.writeText).toHaveBeenCalledWith("PENG-NEW");
+    expect(screen.queryByLabelText("Set password")).not.toBeInTheDocument();
   });
   it("keeps the created wallet ID if automatic sign-in fails", async () => {
     mock.command.mockImplementation(async (name: string) => {
@@ -143,19 +162,31 @@ describe("PengMiner desktop UI", () => {
       return snapshot();
     });
     render(<App />);
-    await screen.findByText("Connect your wallet");
-    fireEvent.click(screen.getByRole("button", { name: "Create wallet" }));
-    fireEvent.change(screen.getByLabelText("Password"), {
+    await screen.findByRole("heading", { name: "Sign in" });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(
+      screen.getByRole("heading", { name: "Create account" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Wallet address")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Set password"), {
       target: { value: "new-password" },
     });
     fireEvent.change(screen.getByLabelText("Confirm password"), {
       target: { value: "new-password" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Create and sign in/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await screen.findByRole("alert");
-    expect(screen.getByLabelText("Wallet ID")).toHaveValue("PENG-RETRY");
+    expect(screen.getByLabelText("Wallet address")).toHaveValue("PENG-RETRY");
     expect(screen.getByLabelText("Password")).toHaveValue("");
-    expect(screen.getByRole("status")).toHaveTextContent("PENG-RETRY");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Your account is ready. Sign in below",
+    );
+    expect(screen.getByLabelText("Your wallet address")).toHaveValue(
+      "PENG-RETRY",
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy wallet address" }),
+    ).toBeEnabled();
   });
   it("renders measured backend events, locks configuration, and stops mining", async () => {
     render(<App />);

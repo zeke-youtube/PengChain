@@ -143,6 +143,11 @@ public class WorkspaceTest {
       PengApi savedWallet = new SessionVault(context).load(settings.getString("server"));
       assertNotNull(savedWallet);
       assertEquals(walletId, savedWallet.wallet);
+      controller.command("copy_wallet_address", new JSONObject().put("address", walletId));
+      android.content.ClipboardManager clipboard =
+          (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+      assertNotNull(clipboard.getPrimaryClip());
+      assertEquals(walletId, clipboard.getPrimaryClip().getItemAt(0).getText().toString());
       controller.command("logout", new JSONObject());
       controller.command(
           "login",

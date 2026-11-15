@@ -1150,3 +1150,42 @@ select {
     font-size: 8px;
   }
 }
+
+.account-created {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.account-created > div {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.account-created h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.account-created p {
+  margin: 8px 0;
+}
+.account-created input {
+  width: 100%;
+}
+.account-created label {
+  display: block;
+  margin: 12px 0 6px;
+}
+
+.login-panel .auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 0;
+}
+.login-panel .small {
+  display: block;
+  margin-top: 12px;
+}

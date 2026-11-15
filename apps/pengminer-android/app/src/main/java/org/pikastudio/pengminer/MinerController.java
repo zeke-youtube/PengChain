@@ -166,6 +166,15 @@ final class MinerController {
       case "save_settings":
         saveSettings(args.getJSONObject("settings"));
         break;
+      case "copy_wallet_address":
+        String address = args.getString("address");
+        if (!address.matches("PENG-[A-F0-9]{8}"))
+          throw new IllegalArgumentException("Invalid wallet address");
+        android.content.ClipboardManager clipboard =
+            (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(
+            android.content.ClipData.newPlainText("PengChain wallet address", address));
+        return new JSONObject().put("copied", true);
       case "create_wallet":
         if (running) throw new IllegalStateException("Stop mining before creating a wallet");
         String password = args.getString("password");

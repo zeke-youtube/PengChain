@@ -1,0 +1,1605 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Mine PENG in your browser with PengChain's verified PCA-10 protocol."
+    />
+    <title>PengChain · Web Miner</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172e35;
+        --muted: #5c7278;
+        --line: #dce7e7;
+        --teal: #087e76;
+        --pale: #edf7f3;
+        --paper: #fff;
+        --bg: #f5f8f7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          15px/1.55 system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      a {
+        color: var(--teal);
+      }
+      button,
+      input,
+      a {
+        touch-action: manipulation;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #e2ac37;
+        outline-offset: 3px;
+      }
+      header {
+        background: var(--paper);
+        border-bottom: 1px solid var(--line);
+      }
+      .wrap {
+        width: min(1180px, calc(100% - 40px));
+        margin: auto;
+      }
+      .top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        min-height: 82px;
+      }
+      .brand {
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        font-size: 23px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .brand small {
+        font-size: 11px;
+        letter-spacing: 0.07em;
+        font-weight: 600;
+        color: var(--muted);
+        border-left: 1px solid var(--line);
+        padding-left: 13px;
+        margin-left: 5px;
+      }
+      .logo {
+        width: 33px;
+        height: 40px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 650;
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        padding: 7px 13px;
+        background: white;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #8a9d9f;
+      }
+      .online .dot {
+        background: #198565;
+      }
+      .offline .dot {
+        background: #b25828;
+      }
+      main {
+        padding: 40px 0;
+      }
+      .hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 25px;
+        margin-bottom: 30px;
+      }
+      .eyebrow {
+        color: var(--teal);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      h1 {
+        font-size: clamp(30px, 4vw, 46px);
+        line-height: 1.15;
+        letter-spacing: -0.055em;
+        margin: 9px 0 12px;
+      }
+      h1 span {
+        color: var(--teal);
+      }
+      p {
+        color: var(--muted);
+        margin: 8px 0;
+      }
+      .hero p {
+        max-width: 650px;
+      }
+      .hero-art {
+        height: 120px;
+        width: 150px;
+        flex: none;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 310px minmax(0, 1fr);
+        gap: 22px;
+        align-items: start;
+      }
+      .panel {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: 0 5px 20px #15392e03;
+      }
+      .pad {
+        padding: 23px;
+      }
+      .panel h2 {
+        font-size: 16px;
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+      .head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .small {
+        font-size: 12px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 650;
+        margin: 16px 0 6px;
+      }
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #c9d9d9;
+        background: #fcfdfd;
+        border-radius: 9px;
+        color: var(--ink);
+        min-width: 0;
+      }
+      input[type="number"] {
+        max-width: 100%;
+      }
+      .button {
+        border: 1px solid #cfdddd;
+        border-radius: 9px;
+        padding: 10px 14px;
+        background: white;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 650;
+        min-height: 42px;
+      }
+      .primary {
+        background: var(--teal);
+        border-color: var(--teal);
+        color: white;
+      }
+      .full {
+        width: 100%;
+        margin-top: 17px;
+      }
+      .actions {
+        display: flex;
+        gap: 9px;
+        margin-top: 20px;
+      }
+      .actions button {
+        flex: 1;
+      }
+      .warning {
+        padding: 12px 13px;
+        background: #fff8e9;
+        border: 1px solid #f2e5bd;
+        border-radius: 10px;
+        color: #775d22;
+        font-size: 12px;
+        margin-top: 17px;
+      }
+      .divider {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 23px 0;
+      }
+      .wallet {
+        font-family: ui-monospace, monospace;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+        margin: 6px 0 14px;
+      }
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 15px;
+        margin-bottom: 19px;
+      }
+      .stat {
+        padding: 21px;
+      }
+      .stat label {
+        color: var(--muted);
+        margin: 0 0 12px;
+        font-size: 11px;
+        font-weight: 650;
+      }
+      .number {
+        font-size: 28px;
+        line-height: 1.2;
+        letter-spacing: -0.05em;
+        font-weight: 750;
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+      }
+      .unit {
+        font-size: 12px;
+        letter-spacing: 0;
+        margin-left: 5px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .stat p {
+        font-size: 11px;
+        margin: 10px 0 0;
+      }
+      .earned {
+        background: var(--pale);
+        border-color: #d4e9df;
+      }
+      .earned .number {
+        color: var(--teal);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        margin: 0;
+      }
+      .metrics div {
+        min-width: 0;
+      }
+      .metrics dt {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 7px;
+      }
+      .metrics dd {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+      }
+      .job {
+        margin-top: 22px;
+        padding: 16px;
+        background: #f6f9f8;
+        border-radius: 10px;
+      }
+      .job-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        font-size: 12px;
+      }
+      .job code {
+        display: block;
+        overflow-wrap: anywhere;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 9px;
+        min-height: 19px;
+      }
+      .progress {
+        height: 4px;
+        background: #dbe6e3;
+        border-radius: 10px;
+        margin-top: 13px;
+        overflow: hidden;
+      }
+      .progress span {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: var(--teal);
+      }
+      .spaced {
+        margin-top: 19px;
+      }
+      .log {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        max-height: 290px;
+        overflow: auto;
+      }
+      .log li {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 14px;
+        padding: 12px 0;
+        border-bottom: 1px solid #edf1f0;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .log li:last-child {
+        border: 0;
+      }
+      .log time {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .empty {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 13px 0;
+      }
+      .tag {
+        font-size: 10px;
+        border-radius: 5px;
+        background: #edf3f2;
+        color: var(--teal);
+        padding: 4px 7px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+      }
+      .message {
+        background: #fff8e9;
+        border: 1px solid #ecd7a1;
+        border-radius: 10px;
+        padding: 12px 15px;
+        margin-bottom: 20px;
+        color: #755314;
+        font-size: 13px;
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        color: var(--muted);
+        font-size: 11px;
+        padding: 25px 0;
+        border-top: 1px solid var(--line);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      details {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 14px;
+      }
+      summary {
+        cursor: pointer;
+      }
+      details p {
+        margin: 9px 0;
+      }
+      noscript p {
+        padding: 20px;
+        background: #fff4d7;
+      }
+      .session-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .session-actions button {
+        font-size: 11px;
+        padding: 5px 10px;
+        min-height: 33px;
+      }
+      @media (max-width: 920px) {
+        .layout {
+          grid-template-columns: 270px minmax(0, 1fr);
+        }
+        .card-grid {
+          grid-template-columns: 1fr;
+        }
+        .stat {
+          padding: 16px 20px;
+        }
+        .stat label {
+          margin-bottom: 7px;
+        }
+        .metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .hero-art {
+          width: 110px;
+        }
+      }
+      @media (max-width: 640px) {
+        .wrap {
+          width: calc(100% - 28px);
+        }
+        .top {
+          min-height: 70px;
+          gap: 8px;
+        }
+        .brand {
+          font-size: 20px;
+        }
+        .brand small {
+          display: none;
+        }
+        .pill {
+          font-size: 11px;
+          padding: 6px 9px;
+        }
+        .hero {
+          margin-bottom: 22px;
+        }
+        .hero-art {
+          display: none;
+        }
+        main {
+          padding-top: 27px;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .pad {
+          padding: 20px;
+        }
+        .card-grid {
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .card-grid .stat:first-child {
+          grid-column: 1/-1;
+        }
+        .stat {
+          padding: 18px 15px;
+        }
+        .number {
+          font-size: 25px;
+        }
+        footer {
+          flex-direction: column;
+          gap: 6px;
+        }
+        .hero p {
+          font-size: 13px;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        button {
+          transition:
+            background 0.15s,
+            opacity 0.15s;
+        }
+        .primary:hover:not(:disabled) {
+          background: #076a63;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap top">
+        <div class="brand">
+          <svg class="logo" viewBox="0 0 50 60" aria-hidden="true">
+            <ellipse cx="25" cy="29" rx="20" ry="27" fill="#193b40" />
+            <ellipse cx="25" cy="36" rx="14" ry="18" fill="#f5faf8" />
+            <circle cx="18" cy="19" r="3" fill="white" />
+            <circle cx="32" cy="19" r="3" fill="white" />
+            <path d="m20 26 5 6 5-6" fill="#e2ac37" />
+            <path d="m8 55 13-3v7H8zm21-3 13 3v4H29z" fill="#e2ac37" /></svg
+          >pengchain <small>WEB MINER</small>
+        </div>
+        <span class="pill" id="connection"
+          ><span class="dot"></span
+          ><span id="connection-text">Checking session</span></span
+        >
+      </div>
+    </header>
+    <main class="wrap">
+      <div class="hero">
+        <div>
+          <div class="eyebrow">Your browser. Your compute.</div>
+          <h1>A little compute. <span>Real PENG.</span></h1>
+          <p>
+            Put your CPU to work with PCA-10. Every reward is verified and
+            recorded by the PengChain server.
+          </p>
+        </div>
+        <svg class="hero-art" viewBox="0 0 160 130" aria-hidden="true">
+          <ellipse cx="81" cy="114" rx="68" ry="12" fill="#dcece5" />
+          <circle cx="84" cy="62" r="54" fill="#e1efe8" />
+          <path
+            d="M38 82Q20 103 25 106L47 95M119 81q22 19 15 25l-21-12"
+            fill="#24474b"
+          />
+          <ellipse cx="80" cy="65" rx="39" ry="49" fill="#24474b" />
+          <ellipse cx="80" cy="77" rx="27" ry="34" fill="white" />
+          <ellipse cx="65" cy="47" rx="9" ry="12" fill="white" />
+          <ellipse cx="95" cy="47" rx="9" ry="12" fill="white" />
+          <circle cx="68" cy="47" r="3" fill="#24474b" />
+          <circle cx="92" cy="47" r="3" fill="#24474b" />
+          <path
+            d="m72 58 8 11 8-11M49 112l24-4v11H48zm38-4 25 4v7H87z"
+            fill="#e2ac37"
+          />
+          <path
+            d="M53 76q25 11 53 0"
+            fill="none"
+            stroke="#087e76"
+            stroke-width="9"
+          />
+          <path d="m97 78 9 20" stroke="#087e76" stroke-width="9" />
+        </svg>
+      </div>
+      <noscript
+        ><p>
+          JavaScript is required for browser mining. Mining never starts
+          automatically.
+        </p></noscript
+      >
+      <div id="message" class="message" role="alert" hidden></div>
+      <div class="layout">
+        <aside class="panel pad">
+          <div class="head">
+            <h2>Mining setup</h2>
+            <span class="tag">CPU · PCA-10</span>
+          </div>
+          <form id="login-form">
+            <p class="small">
+              Sign in to your PengChain wallet on this server.
+            </p>
+            <label for="wallet-input">Wallet ID</label
+            ><input
+              id="wallet-input"
+              name="username"
+              autocomplete="username"
+              placeholder="PENG-…"
+              required
+              maxlength="128"
+            />
+            <label for="password">Password</label
+            ><input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              maxlength="256"
+            />
+            <button class="button primary full" id="login-button">
+              Sign in
+            </button>
+            <p class="small">
+              Passwords are sent only to the login API and never saved by this
+              page.
+            </p>
+          </form>
+          <div id="session" hidden>
+            <span class="small muted">CONNECTED WALLET</span>
+            <div class="wallet" id="wallet">
+              Identified when you start mining
+            </div>
+            <div class="session-actions">
+              <button class="button" id="refresh">Refresh balance</button
+              ><button class="button" id="logout">Sign out</button>
+            </div>
+          </div>
+          <hr class="divider" />
+          <label for="workers">CPU workers</label
+          ><input
+            id="workers"
+            type="number"
+            min="1"
+            max="1"
+            value="1"
+            step="1"
+          />
+          <p id="worker-hint" class="small">
+            One worker is recommended to start.
+          </p>
+          <label for="network">Network ID</label
+          ><input
+            id="network"
+            value="pengchain-v1"
+            maxlength="128"
+            spellcheck="false"
+          />
+          <p class="small">Must match the server’s NETWORK_ID.</p>
+          <div class="warning">
+            Mining uses CPU and battery, and can warm up your device. Start with
+            one worker. Mining stops when this tab is hidden.
+          </div>
+          <div class="actions">
+            <button class="button primary" id="start" disabled>
+              Start Mining</button
+            ><button class="button" id="stop" disabled>Stop</button>
+          </div>
+          <details>
+            <summary>Session &amp; privacy</summary>
+            <p>
+              This page uses this server’s HttpOnly session cookie. No passwords
+              or tokens are stored in localStorage. Existing sessions are
+              checked on load; their wallet ID appears with the first mining
+              job.
+            </p>
+            <p>
+              Only a click starts mining. Stopping or leaving the tab ends the
+              workers. Resume requires another click.
+            </p>
+          </details>
+        </aside>
+        <div>
+          <div class="card-grid">
+            <div class="panel stat">
+              <label>MEASURED HASHRATE</label>
+              <div class="number">
+                <span id="hashrate">0</span
+                ><span class="unit" id="hashrate-unit">H/s</span>
+              </div>
+              <p>Completed PCA-10 evaluations per second</p>
+            </div>
+            <div class="panel stat earned">
+              <label>CONFIRMED EARNED</label>
+              <div class="number">
+                <span id="earned">0</span><span class="unit">PENG</span>
+              </div>
+              <p>This mining run · server receipts only</p>
+            </div>
+            <div class="panel stat">
+              <label>WALLET BALANCE</label>
+              <div class="number">
+                <span id="balance">—</span><span class="unit">PENG</span>
+              </div>
+              <p id="balance-time">Sign in to view your balance</p>
+            </div>
+          </div>
+          <section class="panel pad">
+            <div class="head">
+              <h2>Live mining</h2>
+              <span class="pill"
+                ><span class="dot"></span
+                ><span id="mining-state">Idle</span></span
+              >
+            </div>
+            <dl class="metrics">
+              <div>
+                <dt>Total hashes</dt>
+                <dd id="hashes">0</dd>
+              </div>
+              <div>
+                <dt>Accepted jobs</dt>
+                <dd id="accepted">0</dd>
+              </div>
+              <div>
+                <dt>Rejected submissions</dt>
+                <dd id="rejected">0</dd>
+              </div>
+              <div>
+                <dt>Mining uptime</dt>
+                <dd id="uptime">00:00:00</dd>
+              </div>
+              <div>
+                <dt>Difficulty</dt>
+                <dd id="difficulty">—</dd>
+              </div>
+              <div>
+                <dt>Active workers</dt>
+                <dd id="active-workers">0</dd>
+              </div>
+              <div>
+                <dt>Expires in</dt>
+                <dd id="expires">—</dd>
+              </div>
+              <div>
+                <dt>Protocol</dt>
+                <dd>PCA-10 v1</dd>
+              </div>
+            </dl>
+            <div class="job">
+              <div class="job-line">
+                <strong>Current job</strong><span class="muted">PENG</span>
+              </div>
+              <code id="job-id">No active job. Start when you’re ready.</code>
+              <div class="progress"><span id="job-progress"></span></div>
+            </div>
+          </section>
+          <section class="panel pad spaced">
+            <div class="head">
+              <h2>Recent activity</h2>
+              <span class="small muted">This tab only</span>
+            </div>
+            <p class="empty" id="empty-log">
+              Your session activity will appear here.
+            </p>
+            <ol class="log" id="log" aria-label="Recent activity"></ol>
+          </section>
+          <p class="small muted">
+            Rewards and difficulty are set by the server. A found solution earns
+            nothing until the server accepts it. Browser mining is slower than
+            the native PengWallet miner.
+          </p>
+        </div>
+      </div>
+    </main>
+    <footer class="wrap">
+      <span>🐧 PengChain V1 · Server-authoritative ledger</span
+      ><span>No automatic mining. No local reward authority.</span>
+    </footer>
+    <script id="mining-core">
+      "use strict";
+      const Pow = (() => {
+        const MAX_NONCE = (1n << 64n) - 1n;
+        function prefix(job, network) {
+          if (
+            !Number.isInteger(job.difficulty) ||
+            job.difficulty < 1 ||
+            job.difficulty > 64
+          )
+            throw new Error("Invalid difficulty");
+          if (
+            typeof job.challenge !== "string" ||
+            !/^[A-Za-z0-9_-]{43}$/.test(job.challenge)
+          )
+            throw new Error("Invalid challenge");
+          const challenge = Uint8Array.from(
+            atob(job.challenge.replace(/-/g, "+").replace(/_/g, "/") + "="),
+            (c) => c.charCodeAt(0),
+          );
+          if (challenge.length !== 32)
+            throw new Error("Invalid challenge length");
+          const encoder = new TextEncoder();
+          const strings = [network, job.jobId, job.tokenId, job.walletId];
+          if (
+            strings.some(
+              (s) => typeof s !== "string" || !s.length || s.length > 256,
+            )
+          )
+            throw new Error("Invalid job fields");
+          const fields = [
+            new Uint8Array([1]),
+            ...strings.map((s) => encoder.encode(s)),
+            challenge,
+          ];
+          const input = new Uint8Array(
+            fields.reduce((sum, f) => sum + 4 + f.length, 0),
+          );
+          const view = new DataView(input.buffer);
+          let offset = 0;
+          for (const field of fields) {
+            view.setUint32(offset, field.length, false);
+            input.set(field, offset + 4);
+            offset += 4 + field.length;
+          }
+          return input;
+        }
+        function input(prefixBytes, nonce) {
+          if (typeof nonce !== "bigint" || nonce < 0n || nonce > MAX_NONCE)
+            throw new Error("Nonce outside uint64");
+          const bytes = new Uint8Array(prefixBytes.length + 8);
+          bytes.set(prefixBytes);
+          new DataView(bytes.buffer).setBigUint64(
+            prefixBytes.length,
+            nonce,
+            false,
+          );
+          return bytes;
+        }
+        async function hash(
+          bytes,
+          digest = (data) => crypto.subtle.digest("SHA-256", data),
+        ) {
+          let result = bytes;
+          for (let round = 0; round < 10; round++)
+            result = new Uint8Array(await digest(result));
+          return result;
+        }
+        function meetsDifficulty(bytes, difficulty) {
+          if (
+            bytes.length !== 32 ||
+            !Number.isInteger(difficulty) ||
+            difficulty < 1 ||
+            difficulty > 64
+          )
+            return false;
+          for (let i = 0; i < Math.floor(difficulty / 2); i++)
+            if (bytes[i] !== 0) return false;
+          return (
+            difficulty % 2 === 0 || bytes[Math.floor(difficulty / 2)] >> 4 === 0
+          );
+        }
+        function laneNonce(lane, count, index) {
+          if (
+            !Number.isInteger(count) ||
+            count < 1 ||
+            !Number.isInteger(lane) ||
+            lane < 0 ||
+            lane >= count ||
+            index < 0n
+          )
+            throw new Error("Invalid nonce lane");
+          const nonce = BigInt(lane) + BigInt(count) * index;
+          return nonce <= MAX_NONCE ? nonce : null;
+        }
+        function expired(wallDeadline, monotonicDeadline) {
+          return (
+            Date.now() >= wallDeadline || performance.now() >= monotonicDeadline
+          );
+        }
+        function workerMain() {
+          let cancelled = false;
+          let started = false;
+          self.onmessage = async ({ data }) => {
+            if (data.type === "stop") {
+              cancelled = true;
+              return;
+            }
+            if (data.type !== "start" || started) return;
+            started = true;
+            let hashes = 0n;
+            let lastReport = performance.now();
+            const report = (type, extra = {}) =>
+              self.postMessage({ type, hashes: hashes.toString(), ...extra });
+            try {
+              const { job, network, lane, count, deadline } = data;
+              const monotonicDeadline =
+                performance.now() + Math.max(0, deadline - Date.now());
+              const bytes = Pow.input(Pow.prefix(job, network), 0n);
+              const nonceView = new DataView(bytes.buffer);
+              const offset = bytes.length - 8;
+              let index = 0n;
+              while (!cancelled && !Pow.expired(deadline, monotonicDeadline)) {
+                const nonce = Pow.laneNonce(lane, count, index++);
+                if (nonce === null) {
+                  report("exhausted");
+                  return;
+                }
+                nonceView.setBigUint64(offset, nonce, false);
+                const digest = await Pow.hash(bytes);
+                hashes++;
+                if (cancelled) break;
+                if (Pow.expired(deadline, monotonicDeadline)) {
+                  report("expired");
+                  return;
+                }
+                if (Pow.meetsDifficulty(digest, job.difficulty)) {
+                  report("found", { nonce: nonce.toString() });
+                  return;
+                }
+                if (performance.now() - lastReport >= 200) {
+                  report("progress");
+                  lastReport = performance.now();
+                }
+              }
+              report(cancelled ? "stopped" : "expired");
+            } catch (error) {
+              report("error", { message: String(error.message || error) });
+            }
+          };
+        }
+        return {
+          MAX_NONCE,
+          prefix,
+          input,
+          hash,
+          meetsDifficulty,
+          laneNonce,
+          expired,
+          workerMain,
+        };
+      })();
+    </script>
+    <script id="mining-app">
+      "use strict";
+      (() => {
+        const $ = (id) => document.getElementById(id);
+        const maxWorkers = Math.min(
+          16,
+          Math.max(1, navigator.hardwareConcurrency || 2),
+        );
+        $("workers").max = String(maxWorkers);
+        $("worker-hint").textContent =
+          `1–${maxWorkers} workers available. Start with one.`;
+        const state = {
+          authenticated: false,
+          wallet: null,
+          running: false,
+          task: null,
+          abort: null,
+          cancelSolver: null,
+          hashes: 0n,
+          accepted: 0,
+          rejected: 0,
+          earned: 0n,
+          rate: 0,
+          startTime: 0,
+          elapsed: 0,
+          job: null,
+          deadline: 0,
+          lifetime: 0,
+          activeWorkers: 0,
+          balanceAt: 0,
+          status: "Idle",
+          authBusy: false,
+        };
+        let workerURL;
+        let lastTick = Date.now();
+        let lastRateTime = performance.now();
+        let lastHashes = 0n;
+        function log(message) {
+          $("empty-log").hidden = true;
+          const li = document.createElement("li");
+          const time = document.createElement("time");
+          time.textContent = new Date().toLocaleTimeString([], {
+            hour12: false,
+          });
+          const text = document.createElement("span");
+          text.textContent = message;
+          li.append(time, text);
+          $("log").prepend(li);
+          while ($("log").children.length > 80) $("log").lastChild.remove();
+        }
+        function message(text = "") {
+          $("message").hidden = !text;
+          $("message").textContent = text;
+        }
+        function connection(text, online = false) {
+          $("connection-text").textContent = text;
+          $("connection").className = `pill ${online ? "online" : "offline"}`;
+        }
+        function controls() {
+          const locked = !!state.task || state.authBusy;
+          $("start").disabled = !state.authenticated || locked || !supported;
+          $("stop").disabled = !state.running;
+          for (const id of [
+            "workers",
+            "network",
+            "refresh",
+            "logout",
+            "login-button",
+            "wallet-input",
+            "password",
+          ])
+            $(id).disabled =
+              locked ||
+              (!supported &&
+                ["login-button", "wallet-input", "password"].includes(id));
+          $("login-form").hidden = state.authenticated;
+          $("session").hidden = !state.authenticated;
+          $("wallet").textContent =
+            state.wallet || "Identified when you start mining";
+        }
+        function render() {
+          $("hashes").textContent = state.hashes.toLocaleString();
+          $("accepted").textContent = String(state.accepted);
+          $("rejected").textContent = String(state.rejected);
+          $("earned").textContent = state.earned.toLocaleString();
+          $("active-workers").textContent = String(state.activeWorkers);
+          $("mining-state").textContent = state.status;
+          const seconds = Math.floor(
+            (state.running ? Date.now() - state.startTime : state.elapsed) /
+              1000,
+          );
+          $("uptime").textContent = [
+            Math.floor(seconds / 3600),
+            Math.floor(seconds / 60) % 60,
+            seconds % 60,
+          ]
+            .map((n) => String(n).padStart(2, "0"))
+            .join(":");
+          const rate = state.running && state.activeWorkers ? state.rate : 0;
+          const scale = rate >= 1e6 ? 1e6 : rate >= 1e3 ? 1e3 : 1;
+          $("hashrate").textContent = (rate / scale).toFixed(
+            scale === 1 ? 0 : 2,
+          );
+          $("hashrate-unit").textContent =
+            scale === 1e6 ? "MH/s" : scale === 1e3 ? "KH/s" : "H/s";
+          $("job-id").textContent =
+            state.job?.jobId || "No active job. Start when you’re ready.";
+          $("difficulty").textContent = state.job
+            ? String(state.job.difficulty)
+            : "—";
+          $("expires").textContent = state.job
+            ? `${Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000))}s`
+            : "—";
+          $("job-progress").style.width = state.job
+            ? `${Math.max(0, Math.min(100, (100 * (state.deadline - Date.now())) / state.lifetime))}%`
+            : "0%";
+        }
+        class ApiError extends Error {
+          constructor(message, status = 0, retryAfter = 0) {
+            super(message);
+            this.status = status;
+            this.retryAfter = retryAfter;
+          }
+        }
+        function pause(ms, signal) {
+          return new Promise((resolve, reject) => {
+            const aborted = () => {
+              clearTimeout(timer);
+              signal.removeEventListener("abort", aborted);
+              reject(new DOMException("Stopped", "AbortError"));
+            };
+            const timer = setTimeout(() => {
+              signal.removeEventListener("abort", aborted);
+              resolve();
+            }, ms);
+            if (signal.aborted) aborted();
+            else signal.addEventListener("abort", aborted, { once: true });
+          });
+        }
+        async function api(path, body, signal) {
+          if (!navigator.onLine) throw new ApiError("Network offline");
+          const timeout = new AbortController();
+          const abort = () => timeout.abort();
+          if (signal?.aborted) throw new DOMException("Stopped", "AbortError");
+          signal?.addEventListener("abort", abort, { once: true });
+          const timer = setTimeout(() => timeout.abort(), 15000);
+          try {
+            const response = await fetch(`/blockchain/api${path}`, {
+              method: body === undefined ? "GET" : "POST",
+              credentials: "same-origin",
+              mode: "same-origin",
+              redirect: "error",
+              cache: "no-store",
+              signal: timeout.signal,
+              headers:
+                body === undefined
+                  ? { Accept: "application/json" }
+                  : {
+                      Accept: "application/json",
+                      "Content-Type": "application/json",
+                    },
+              body: body === undefined ? undefined : JSON.stringify(body),
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) {
+              const retry = response.headers.get("Retry-After");
+              const seconds =
+                retry && /^\d+$/.test(retry)
+                  ? Number(retry)
+                  : retry
+                    ? Math.max(0, (Date.parse(retry) - Date.now()) / 1000)
+                    : 0;
+              throw new ApiError(
+                typeof data?.error === "string"
+                  ? data.error.slice(0, 200)
+                  : `Server returned HTTP ${response.status}`,
+                response.status,
+                Math.min(120000, (seconds || 0) * 1000),
+              );
+            }
+            if (!data)
+              throw new ApiError(
+                "Server returned an invalid JSON response",
+                502,
+              );
+            return {
+              data,
+              serverTime: Date.parse(response.headers.get("Date")),
+            };
+          } catch (error) {
+            if (signal?.aborted)
+              throw new DOMException("Stopped", "AbortError");
+            if (error instanceof ApiError) throw error;
+            throw new ApiError("Request timed out or network unavailable");
+          } finally {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", abort);
+          }
+        }
+        function forgetSession() {
+          connection("Sign-in required");
+          state.authenticated = false;
+          state.wallet = null;
+          $("balance").textContent = "—";
+          $("balance-time").textContent = "Sign in to view your balance";
+          controls();
+        }
+        async function balance(signal) {
+          const { data } = await api("/wallet/balance", undefined, signal);
+          if (!Array.isArray(data))
+            throw new ApiError("Invalid balance response", 502);
+          const amount =
+            data.find((item) => item.symbol === "PENG")?.amount ?? 0;
+          if (!Number.isSafeInteger(amount) || amount < 0)
+            throw new ApiError(
+              "Balance exceeds safe browser integer precision",
+              422,
+            );
+          $("balance").textContent = BigInt(amount).toLocaleString();
+          state.balanceAt = Date.now();
+          $("balance-time").textContent =
+            `Updated ${new Date().toLocaleTimeString()}`;
+          state.authenticated = true;
+          connection("Connected", true);
+          controls();
+        }
+        function stop(reason = "Mining stopped.") {
+          if (!state.task) return;
+          state.running = false;
+          state.elapsed = Date.now() - state.startTime;
+          state.status = "Stopping";
+          state.abort.abort();
+          state.cancelSolver?.("stopped");
+          log(reason);
+          controls();
+          render();
+        }
+        function solve(job, network, count, deadline) {
+          return new Promise((resolve, reject) => {
+            const workers = new Map();
+            let result = null;
+            let failure = null;
+            let finishing = false;
+            let forceTimer;
+            const finish = () => {
+              if (workers.size) return;
+              clearTimeout(forceTimer);
+              state.cancelSolver = null;
+              if (failure) reject(failure);
+              else resolve(result || { type: "exhausted" });
+            };
+            const cancel = (type) => {
+              if (!result) result = { type };
+              if (finishing) return;
+              finishing = true;
+              for (const worker of workers.keys())
+                worker.postMessage({ type: "stop" });
+              forceTimer = setTimeout(() => {
+                for (const worker of workers.keys()) worker.terminate();
+                workers.clear();
+                state.activeWorkers = 0;
+                log(
+                  "A worker did not acknowledge cancellation; its unreported hashes were not counted.",
+                );
+                finish();
+              }, 1500);
+            };
+            state.cancelSolver = cancel;
+            try {
+              for (let lane = 0; lane < count; lane++) {
+                const worker = new Worker(workerURL);
+                workers.set(worker, 0n);
+                state.activeWorkers = workers.size;
+                worker.onmessage = ({ data }) => {
+                  if (!workers.has(worker)) return;
+                  const hashes = BigInt(data.hashes);
+                  const previous = workers.get(worker);
+                  if (hashes >= previous) state.hashes += hashes - previous;
+                  workers.set(worker, hashes);
+                  if (data.type === "progress") return;
+                  worker.terminate();
+                  workers.delete(worker);
+                  state.activeWorkers = workers.size;
+                  if (data.type === "found" && !finishing) {
+                    result = { type: "found", nonce: data.nonce };
+                    cancel("found");
+                  }
+                  if (data.type === "expired" && !finishing) cancel("expired");
+                  if (data.type === "error") {
+                    failure = new Error(data.message);
+                    cancel("error");
+                  }
+                  finish();
+                };
+                worker.onerror = (event) => {
+                  event.preventDefault();
+                  failure = new Error(
+                    "Mining worker failed. Check browser support and the hosting Content Security Policy.",
+                  );
+                  worker.terminate();
+                  workers.delete(worker);
+                  state.activeWorkers = workers.size;
+                  cancel("error");
+                  finish();
+                };
+                worker.postMessage({
+                  type: "start",
+                  job,
+                  network,
+                  count,
+                  lane,
+                  deadline,
+                });
+              }
+            } catch (error) {
+              failure = error;
+              cancel("error");
+              finish();
+            }
+          });
+        }
+        async function run(count, network, signal) {
+          let failures = 0;
+          try {
+            while (!signal.aborted) {
+              try {
+                state.status = "Requesting job";
+                const requestTime = Date.now();
+                const { data: job, serverTime } = await api(
+                  "/mining/job?symbol=PENG",
+                  undefined,
+                  signal,
+                );
+                Pow.prefix(job, network);
+                if (
+                  job.symbol !== "PENG" ||
+                  !Number.isSafeInteger(job.expiresAt) ||
+                  !Number.isSafeInteger(job.issuedAt) ||
+                  job.expiresAt <= job.issuedAt ||
+                  job.expiresAt - job.issuedAt > 300000
+                )
+                  throw new Error("Invalid mining job response");
+                if (state.wallet && state.wallet !== job.walletId)
+                  throw new Error(
+                    "The session wallet changed. Sign in again before mining.",
+                  );
+                state.wallet = job.walletId;
+                state.lifetime = job.expiresAt - job.issuedAt;
+                const serverNow = Number.isFinite(serverTime)
+                  ? Math.max(job.issuedAt, serverTime + 1000)
+                  : job.issuedAt + Date.now() - requestTime;
+                state.deadline =
+                  Date.now() +
+                  Math.max(
+                    0,
+                    Math.min(state.lifetime, job.expiresAt - serverNow),
+                  );
+                state.job = job;
+                controls();
+                render();
+                connection("Connected", true);
+                state.status = "Mining";
+                log(`Job ${job.jobId}: difficulty ${job.difficulty}.`);
+                const result = await solve(job, network, count, state.deadline);
+                if (signal.aborted) break;
+                if (result.type === "found" && Date.now() < state.deadline) {
+                  state.status = "Submitting";
+                  // A POST can commit even if its response is lost. Never retry that submission
+                  // or infer earned PENG from a balance change: only an explicit receipt counts.
+                  let receipt;
+                  try {
+                    receipt = (
+                      await api(
+                        "/mining/submit",
+                        { jobId: job.jobId, nonce: result.nonce },
+                        signal,
+                      )
+                    ).data;
+                  } catch (error) {
+                    if (
+                      error.status >= 400 &&
+                      error.status < 500 &&
+                      error.status !== 401 &&
+                      error.status !== 403 &&
+                      error.status !== 429
+                    ) {
+                      state.rejected++;
+                      log(`Submission rejected: ${error.message}.`);
+                      if (!/stale|already used|duplicate/i.test(error.message))
+                        throw new Error(
+                          `Submission rejected: ${error.message}. Check the network ID and server configuration.`,
+                        );
+                    } else {
+                      if (
+                        !error.status ||
+                        error.status >= 500 ||
+                        signal.aborted
+                      )
+                        log(
+                          "Submission not confirmed. It may have reached the server; no reward was added to this run.",
+                        );
+                      throw error;
+                    }
+                  }
+                  if (receipt) {
+                    if (
+                      receipt.accepted !== true ||
+                      !Number.isSafeInteger(receipt.reward) ||
+                      receipt.reward < 1 ||
+                      !/^[a-f0-9]{64}$/.test(receipt.digest)
+                    )
+                      throw new Error(
+                        "Invalid acceptance receipt; no local reward recorded.",
+                      );
+                    state.accepted++;
+                    state.earned += BigInt(receipt.reward);
+                    log(`Accepted by server: +${receipt.reward} PENG.`);
+                    if (Date.now() - state.balanceAt > 15000)
+                      await balance(signal);
+                  }
+                } else if (result.type !== "stopped")
+                  log(
+                    result.type === "offline"
+                      ? "Connection lost. Discarded current job."
+                      : "Job expired or nonce lanes completed. Requesting a fresh job.",
+                  );
+                failures = 0;
+                state.job = null;
+                state.rate = 0;
+                // At most 30 jobs/minute, below the existing 100 requests/minute limit.
+                state.status = "Next job";
+                await pause(2000, signal);
+              } catch (error) {
+                state.job = null;
+                state.rate = 0;
+                if (signal.aborted) break;
+                if (error.status === 401) {
+                  forgetSession();
+                  throw new Error("Session expired or revoked. Sign in again.");
+                }
+                const transient =
+                  error instanceof ApiError &&
+                  (!error.status ||
+                    error.status === 429 ||
+                    error.status >= 500);
+                if (!transient || ++failures > 8) throw error;
+                const delay = Math.max(
+                  Math.min(30000, 1000 * 2 ** (failures - 1)),
+                  error.retryAfter || 0,
+                );
+                state.status = "Reconnecting";
+                connection(
+                  error.status === 429 ? "Rate limited" : "Reconnecting",
+                );
+                log(
+                  `${error.message}. Retrying in ${Math.ceil(delay / 1000)}s (${failures}/8).`,
+                );
+                await pause(delay, signal);
+              }
+            }
+          } catch (error) {
+            if (!signal.aborted) {
+              if (error instanceof ApiError)
+                connection(
+                  error.status === 429 ? "Rate limited" : "Unavailable",
+                );
+              message(error.message);
+              log(`Mining stopped: ${error.message}`);
+            }
+          } finally {
+            state.running = false;
+            state.elapsed = Date.now() - state.startTime;
+            state.cancelSolver?.("stopped");
+            state.activeWorkers = 0;
+            state.job = null;
+            state.rate = 0;
+            state.status = "Idle";
+            state.task = null;
+            controls();
+            render();
+          }
+        }
+        const supported =
+          window.isSecureContext &&
+          !!crypto.subtle &&
+          typeof Worker !== "undefined" &&
+          typeof BigInt === "function" &&
+          typeof DataView.prototype.setBigUint64 === "function";
+        if (!supported)
+          message(
+            "This miner needs HTTPS (or localhost) and a browser with Web Crypto, Web Workers, and BigInt support.",
+          );
+        $("start").onclick = () => {
+          if (
+            state.task ||
+            !supported ||
+            !state.authenticated ||
+            document.hidden
+          )
+            return;
+          const count = Number($("workers").value),
+            network = $("network").value.trim();
+          if (
+            !Number.isInteger(count) ||
+            count < 1 ||
+            count > maxWorkers ||
+            !network ||
+            network.length > 128
+          ) {
+            message("Choose a valid worker count and network ID.");
+            return;
+          }
+          if (!workerURL)
+            workerURL = URL.createObjectURL(
+              new Blob(
+                [
+                  $("mining-core").textContent,
+                  "\n(",
+                  Pow.workerMain.toString(),
+                  ")();",
+                ],
+                { type: "text/javascript" },
+              ),
+            );
+          message();
+          state.hashes = 0n;
+          state.accepted = 0;
+          state.rejected = 0;
+          state.earned = 0n;
+          state.rate = 0;
+          state.startTime = Date.now();
+          lastTick = Date.now();
+          lastRateTime = performance.now();
+          lastHashes = 0n;
+          state.running = true;
+          state.abort = new AbortController();
+          state.task = run(count, network, state.abort.signal);
+          log(
+            `Mining started with ${count} CPU worker${count === 1 ? "" : "s"}.`,
+          );
+          controls();
+          render();
+        };
+        $("stop").onclick = () => stop();
+        $("login-form").onsubmit = async (event) => {
+          event.preventDefault();
+          if (!supported || state.authBusy || state.task) return;
+          state.authBusy = true;
+          controls();
+          message();
+          const password = $("password").value;
+          $("password").value = "";
+          try {
+            const { data } = await api("/wallet/login", {
+              walletId: $("wallet-input").value.trim(),
+              password,
+            });
+            if (typeof data.walletId !== "string")
+              throw new Error("Invalid login response");
+            state.wallet = data.walletId;
+            await balance();
+            log(
+              "Signed in. Session protected by the server’s HttpOnly cookie.",
+            );
+          } catch (error) {
+            message(`Sign-in failed: ${error.message}`);
+            connection("Sign-in required");
+          } finally {
+            state.authBusy = false;
+            controls();
+          }
+        };
+        $("logout").onclick = async () => {
+          if (state.task || state.authBusy) return;
+          state.authBusy = true;
+          controls();
+          try {
+            await api("/wallet/logout", {});
+            forgetSession();
+            message();
+            connection("Signed out");
+            log("Signed out on the server.");
+          } catch (error) {
+            if (error.status === 401) forgetSession();
+            else
+              message(
+                `Sign-out could not be confirmed: ${error.message}. Retry when connected.`,
+              );
+          } finally {
+            state.authBusy = false;
+            controls();
+          }
+        };
+        $("refresh").onclick = async () => {
+          if (state.task || state.authBusy) return;
+          state.authBusy = true;
+          controls();
+          try {
+            await balance();
+            message();
+          } catch (error) {
+            if (error.status === 401) forgetSession();
+            message(error.message);
+            connection("Refresh failed");
+          } finally {
+            state.authBusy = false;
+            controls();
+          }
+        };
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden)
+            stop("Tab hidden. Mining stopped; click Start Mining to resume.");
+        });
+        window.addEventListener("pagehide", () => {
+          stop("Page closed. Mining stopped.");
+          if (workerURL) {
+            URL.revokeObjectURL(workerURL);
+            workerURL = null;
+          }
+        });
+        window.addEventListener("offline", () => {
+          connection("Offline");
+          state.cancelSolver?.("offline");
+        });
+        setInterval(() => {
+          const now = Date.now(),
+            mono = performance.now();
+          if (
+            state.running &&
+            (now - lastTick > 10000 || now < lastTick - 1000)
+          )
+            stop(
+              "Browser slept or its clock changed. Click Start Mining to resume.",
+            );
+          lastTick = now;
+          if (mono - lastRateTime >= 750) {
+            state.rate =
+              Number(state.hashes - lastHashes) /
+              ((mono - lastRateTime) / 1000);
+            lastHashes = state.hashes;
+            lastRateTime = mono;
+          }
+          render();
+        }, 250);
+        controls();
+        render();
+        // This checks an existing cookie only. It never creates a job or starts workers.
+        state.authBusy = true;
+        controls();
+        (location.protocol === "file:"
+          ? Promise.reject(
+              new ApiError("Host this HTML on the PengChain HTTPS origin"),
+            )
+          : balance()
+        )
+          .catch((error) => {
+            if (error.status === 401) connection("Sign-in required");
+            else {
+              connection("Unavailable");
+              message(`Could not check your session: ${error.message}`);
+            }
+          })
+          .finally(() => {
+            state.authBusy = false;
+            controls();
+          });
+      })();
+    </script>
+  </body>
+</html>

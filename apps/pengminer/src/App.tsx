@@ -32,6 +32,7 @@ import {
   android,
   appendSample,
   command,
+  copyWalletAddress,
   desktop,
   elapsed,
   hashrate,
@@ -213,6 +214,20 @@ export default function App() {
   const [creatingWallet, setCreatingWallet] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [createdWallet, setCreatedWallet] = useState<string | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const copyAddress = async (address: string) => {
+    setCopiedAddress(null);
+    setCopyError(null);
+    try {
+      await copyWalletAddress(address);
+      setCopiedAddress(address);
+    } catch {
+      setCopyError(
+        "Could not copy. Select the wallet address and copy it manually.",
+      );
+    }
+  };
   const [tokenForm, setTokenForm] = useState({
     name: "",
     symbol: "",
@@ -576,31 +591,65 @@ export default function App() {
             </div>
           )}
           {createdWallet && (
-            <div className="notice" role="status">
-              Wallet created: <strong>{createdWallet}</strong>. Save this ID and
-              your password to sign in on another device. Passwords cannot be
-              recovered.
-            </div>
+            <section
+              className="panel account-created"
+              role="status"
+              aria-label="Account created"
+            >
+              <div>
+                <h2>Account created</h2>
+                <p>
+                  {state?.walletId === createdWallet
+                    ? "You’re signed in."
+                    : busy
+                      ? "Signing you in…"
+                      : "Your account is ready. Sign in below with this address and your password."}
+                </p>
+                <label htmlFor="created-address">Your wallet address</label>
+                <input
+                  id="created-address"
+                  className="mono"
+                  value={createdWallet}
+                  readOnly
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <p className="small muted">
+                  Save this address and your password to sign in on another
+                  device. Your wallet address is your PengChain wallet ID.
+                  Passwords cannot be recovered.
+                </p>
+                {copyError && (
+                  <p className="small" aria-live="polite">
+                    {copyError}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => void copyAddress(createdWallet)}
+              >
+                {copiedAddress === createdWallet
+                  ? "Copied"
+                  : "Copy wallet address"}
+              </button>
+            </section>
           )}
           {!state?.walletId && page !== "Settings" && (
             <section className="panel login-panel">
               <div>
                 <div className="section-title">
                   <Wallet size={19} />
-                  <h2>
-                    {creatingWallet
-                      ? "Create your wallet"
-                      : "Connect your wallet"}
-                  </h2>
+                  <h2>{creatingWallet ? "Create account" : "Sign in"}</h2>
                 </div>
                 <p>
                   {creatingWallet
-                    ? "Choose a password with 8–256 characters. Your server will assign a wallet ID."
-                    : "Use your existing PengChain wallet to start earning."}
+                    ? "Set a password with 8–256 characters. We’ll create your wallet address and sign you in automatically."
+                    : "Sign in with your wallet address and password, or create a new account."}
                 </p>
                 <button
                   type="button"
-                  className="button"
+                  className="button secondary"
                   disabled={disabled}
                   onClick={() => {
                     setCreatingWallet(!creatingWallet);
@@ -609,7 +658,7 @@ export default function App() {
                     setError(null);
                   }}
                 >
-                  {creatingWallet ? "Use existing wallet" : "Create wallet"}
+                  {creatingWallet ? "Sign in instead" : "Create account"}
                 </button>
                 <span className="small muted">
                   Stay signed in until you sign out or your session is revoked.
@@ -618,48 +667,52 @@ export default function App() {
               </div>
               <form onSubmit={signIn}>
                 {!creatingWallet && (
-                  <>
-                    <label className="sr-only" htmlFor="wallet">
-                      Wallet ID
-                    </label>
+                  <label className="auth-field" htmlFor="wallet">
+                    <span>Wallet address</span>
                     <input
                       id="wallet"
-                      placeholder="Wallet ID · PENG-…"
+                      placeholder="PENG-…"
                       value={wallet}
                       onChange={(e) => setWallet(e.target.value)}
+                      autoComplete="username"
                       required
                       disabled={disabled}
                     />
-                  </>
+                  </label>
                 )}
-                <label className="sr-only" htmlFor="password">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Password"
-                  autoComplete={
-                    creatingWallet ? "new-password" : "current-password"
-                  }
-                  minLength={creatingWallet ? 8 : undefined}
-                  maxLength={256}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={disabled}
-                />
-                {creatingWallet && (
+                <label className="auth-field" htmlFor="password">
+                  <span>{creatingWallet ? "Set password" : "Password"}</span>
                   <input
-                    aria-label="Confirm password"
+                    id="password"
                     type="password"
-                    placeholder="Confirm password"
-                    autoComplete="new-password"
-                    value={confirmation}
-                    onChange={(e) => setConfirmation(e.target.value)}
+                    placeholder={
+                      creatingWallet ? "At least 8 characters" : "Password"
+                    }
+                    autoComplete={
+                      creatingWallet ? "new-password" : "current-password"
+                    }
+                    minLength={creatingWallet ? 8 : undefined}
+                    maxLength={256}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={disabled}
                   />
+                </label>
+                {creatingWallet && (
+                  <label className="auth-field" htmlFor="confirm-password">
+                    <span>Confirm password</span>
+                    <input
+                      id="confirm-password"
+                      type="password"
+                      placeholder="Repeat your password"
+                      autoComplete="new-password"
+                      value={confirmation}
+                      onChange={(e) => setConfirmation(e.target.value)}
+                      required
+                      disabled={disabled}
+                    />
+                  </label>
                 )}
                 <button
                   className="button primary"
@@ -671,7 +724,13 @@ export default function App() {
                       : !wallet)
                   }
                 >
-                  {creatingWallet ? "Create and sign in" : "Sign in"}{" "}
+                  {busy
+                    ? creatingWallet
+                      ? "Creating account…"
+                      : "Signing in…"
+                    : creatingWallet
+                      ? "Create account"
+                      : "Sign in"}{" "}
                   <ArrowUpRight size={15} />
                 </button>
               </form>

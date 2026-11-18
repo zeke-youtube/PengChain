@@ -46,6 +46,34 @@ export function command<T>(
     });
   return invoke<T>(name, args);
 }
+export async function copyWalletAddress(address: string): Promise<void> {
+  if (android) {
+    await command("copy_wallet_address", { address });
+    return;
+  }
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(address);
+      return;
+    } catch {
+      // Older desktop WebViews may deny the async clipboard API.
+    }
+  }
+  const field = document.createElement("textarea");
+  field.value = address;
+  field.readOnly = true;
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  const focused = document.activeElement;
+  document.body.append(field);
+  try {
+    field.select();
+    if (!document.execCommand("copy")) throw new Error("Clipboard unavailable");
+  } finally {
+    field.remove();
+    if (focused instanceof HTMLElement) focused.focus();
+  }
+}
 export async function subscribe(onEvent: (event: MiningEvent) => void) {
   if (!desktop) return () => {};
   if (android) {
